@@ -182,6 +182,25 @@ def test_clear_history(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# build_cookies_from_browser
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "browser,expected",
+    [
+        (None, None),
+        ("none", None),
+        ("", None),
+        ("chrome", ("chrome", None, None, None)),
+        ("firefox", ("firefox", None, None, None)),
+        ("bukan-browser-valid", None),
+    ],
+)
+def test_build_cookies_from_browser(browser, expected):
+    assert utils.build_cookies_from_browser(browser) == expected
+
+
+# ---------------------------------------------------------------------------
 # detector.is_valid_url
 # ---------------------------------------------------------------------------
 

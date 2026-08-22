@@ -4,6 +4,8 @@ Logic download memakai yt-dlp (Python API, bukan subprocess),
 dengan progress hook Rich dan retry otomatis untuk error koneksi.
 """
 
+from __future__ import annotations
+
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,7 +23,7 @@ from rich.progress import (
 
 from core.detector import DetectedContent
 from core.options import DownloadChoice
-from core.utils import build_filename, resolve_duplicate
+from core.utils import build_cookies_from_browser, build_filename, resolve_duplicate
 
 console = Console()
 
@@ -103,6 +105,7 @@ def download(
     output_folder: Path,
     naming_template: str,
     max_retry: int = 3,
+    cookies_browser: str | None = None,
 ) -> DownloadResult:
     """Download konten sesuai pilihan user, dengan retry otomatis untuk error koneksi."""
     output_folder.mkdir(parents=True, exist_ok=True)
@@ -111,7 +114,7 @@ def download(
     filename = build_filename(content.platform, content.title, ext, naming_template)
     dest = resolve_duplicate(output_folder / filename)
 
-    ydl_opts = _build_ydl_opts(choice, dest)
+    ydl_opts = _build_ydl_opts(choice, dest, cookies_browser)
 
     attempt = 0
     start_time = time.time()
@@ -160,7 +163,7 @@ def _resolve_final_path(dest: Path) -> Path:
     return matches[0] if matches else dest
 
 
-def _build_ydl_opts(choice: DownloadChoice, dest: Path) -> dict:
+def _build_ydl_opts(choice: DownloadChoice, dest: Path, cookies_browser: str | None = None) -> dict:
     outtmpl = str(dest.with_suffix(""))  # ekstensi diserahkan ke yt-dlp/postprocessor
     opts = {
         "outtmpl": outtmpl + ".%(ext)s",
@@ -169,6 +172,10 @@ def _build_ydl_opts(choice: DownloadChoice, dest: Path) -> dict:
         "noprogress": True,
         "retries": 0,  # retry ditangani manual di sini
     }
+
+    cookies = build_cookies_from_browser(cookies_browser)
+    if cookies:
+        opts["cookiesfrombrowser"] = cookies
 
     if choice.output_kind == "video":
         opts["format"] = _quality_to_format_selector(choice.quality)

@@ -4,6 +4,8 @@ Kumpulan fungsi bantu: sanitasi nama file, format ukuran,
 dan baca/tulis config.json.
 """
 
+from __future__ import annotations
+
 import json
 import re
 from datetime import datetime
@@ -17,8 +19,13 @@ DEFAULT_CONFIG = {
     "auto_paste": True,
     "naming_template": "%(platform)s_%(title)s_%(year)s",
     "max_retry": 3,
+    "cookies_browser": None,
     "history": [],
 }
+
+# Browser yang didukung yt-dlp untuk ambil cookies (buat konten yang butuh login,
+# misal Instagram). None/"none" berarti fitur ini nonaktif.
+SUPPORTED_COOKIE_BROWSERS = ["none", "chrome", "firefox", "edge", "brave", "opera", "vivaldi", "safari"]
 
 ILLEGAL_CHARS = r'[\\/:*?"<>|]'
 MAX_TITLE_LEN = 80
@@ -93,6 +100,18 @@ def resolve_duplicate(path: Path) -> Path:
         if not candidate.exists():
             return candidate
         counter += 1
+
+
+def build_cookies_from_browser(browser: str | None):
+    """
+    Ubah nama browser dari config jadi format yang dipahami yt-dlp
+    (opsi 'cookiesfrombrowser'). Return None kalau fitur nonaktif.
+    """
+    if not browser or browser == "none":
+        return None
+    if browser not in SUPPORTED_COOKIE_BROWSERS:
+        return None
+    return (browser, None, None, None)
 
 
 def format_size(num_bytes: float) -> str:

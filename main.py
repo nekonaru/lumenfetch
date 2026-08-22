@@ -57,11 +57,14 @@ def handle_settings(config: dict) -> dict:
             config["naming_template"] = new_template
             utils.save_config(config)
         elif choice == "5":
+            config["cookies_browser"] = options.ask_cookies_browser()
+            utils.save_config(config)
+        elif choice == "6":
             config.clear()
             config.update(utils.DEFAULT_CONFIG.copy())
             utils.save_config(config)
             console.print("[green]Config direset ke default.[/green]")
-        elif choice == "6":
+        elif choice == "7":
             return config
         else:
             return config
@@ -70,7 +73,7 @@ def handle_settings(config: dict) -> dict:
 def process_url(url: str, config: dict) -> None:
     console.print("\n🔍 Mendeteksi konten...")
     try:
-        content = detect(url)
+        content = detect(url, cookies_browser=config.get("cookies_browser"))
     except DetectionError as e:
         console.print(f"[red]{e}[/red]")
         return
@@ -100,6 +103,7 @@ def process_url(url: str, config: dict) -> None:
             output_folder,
             config["naming_template"],
             max_retry=config.get("max_retry", 3),
+            cookies_browser=config.get("cookies_browser"),
         )
         entry["size"] = utils.format_size(result.size_bytes)
         entry["success"] = True

@@ -32,6 +32,7 @@
 | 🔄 **Auto-retry** | Error koneksi dicoba ulang otomatis (default 3x), error fatal (private/invalid) langsung dilaporkan |
 | 🗂 **Riwayat download** | 20 entri terakhir tersimpan, bisa dilihat kapan saja lewat command `history` |
 | ⚙️ **Pengaturan persisten** | Folder default, max retry, auto-paste, dan naming template diingat lewat `config.json` |
+| 🍪 **Cookies dari browser** | Opsional, buat konten yang minta login (misal Instagram) - ambil cookies dari Chrome/Firefox/Edge/dll |
 | 🧼 **Nama file aman** | Karakter ilegal disanitasi, duplikat otomatis dikasih suffix `(1)`, `(2)`, dst |
 
 ## 📦 Requirements
@@ -172,10 +173,22 @@ Diketik langsung di prompt utama, menggantikan URL:
 | Command | Fungsi |
 |---------|--------|
 | `history` | Lihat 20 riwayat download terakhir (tanggal, platform, judul, format, ukuran, status) |
-| `settings` | Ganti folder default, max retry, auto-paste clipboard, atau naming template |
+| `settings` | Ganti folder default, max retry, auto-paste clipboard, naming template, atau cookies browser |
 | `help` | Tampilkan panduan singkat di dalam aplikasi |
 | `q` / `quit` | Keluar dari aplikasi |
 | `Ctrl+C` | Batalkan download yang sedang berjalan |
+
+## 🍪 Cookies dari Browser (Opsional)
+
+Beberapa platform, terutama Instagram, sekarang sering memblokir request yang "tidak keliatan login" meskipun kontennya publik. Kalau kamu sering ketemu error semacam itu, aktifkan fitur ini:
+
+1. Buka Lumenfetch, ketik `settings`
+2. Pilih `[5] Pakai cookies dari browser`
+3. Pilih browser yang kamu pakai buat login ke platform tersebut (Chrome/Firefox/Edge/Brave/Opera/Vivaldi/Safari)
+
+Setelah aktif, Lumenfetch akan meminjam cookies dari browser itu setiap kali mendeteksi atau mendownload konten, seolah request-nya datang dari sesi browser kamu yang sudah login. Cukup pilih `[1] Nonaktifkan` di menu yang sama kalau mau matikan lagi.
+
+> **Catatan:** pastikan browser yang dipilih sedang tidak dalam keadaan tertutup total saat digunakan di beberapa OS (khususnya Chrome di Windows kadang mengunci file cookies saat browser terbuka). Kalau muncul error terkait cookies, coba tutup browser-nya dulu lalu ulangi.
 
 ## 🗂 Naming & Konfigurasi
 
@@ -186,15 +199,17 @@ YouTube_Lofi-Hip-Hop-Radio_2026.mp4
 Instagram_Post-by-username_2026.jpg
 ```
 
-Preferensi kamu (folder simpan, max retry, auto-paste, naming template, dan riwayat) otomatis tersimpan di `config.json` - dibuat otomatis dengan nilai default saat pertama kali dijalankan, jadi nggak perlu disentuh manual kecuali mau kustomisasi lewat command `settings`.
+Preferensi kamu (folder simpan, max retry, auto-paste, naming template, cookies browser, dan riwayat) otomatis tersimpan di `config.json` - dibuat otomatis dengan nilai default saat pertama kali dijalankan, jadi nggak perlu disentuh manual kecuali mau kustomisasi lewat command `settings`.
 
 ## ⚠️ Troubleshooting
 
 | Masalah | Solusi |
 |---------|--------|
 | `ModuleNotFoundError: No module named 'yt_dlp'` / `'rich'` / `'pyperclip'` | Jalankan ulang `pip install -r requirements.txt` |
+| `HTTP Error 403: Forbidden` (biasanya di YouTube) | Update yt-dlp ke versi terbaru: `pip install --upgrade yt-dlp` |
+| `Unexpected response from webpage request` (biasanya di TikTok) | Update yt-dlp ke versi terbaru: `pip install --upgrade yt-dlp` |
+| `❌ Konten ini private / tidak bisa diakses` (terutama Instagram) | Coba aktifkan fitur **Cookies dari Browser** di atas |
 | `❌ Format tidak tersedia untuk konten ini` | Coba quality/format lain - tidak semua platform punya semua kombinasi |
-| `❌ Konten ini private / tidak bisa diakses` | Konten memang private atau sudah dihapus, tidak bisa diunduh |
 | `❌ Koneksi internet bermasalah` terus muncul | Cek koneksi, atau naikkan `max_retry` lewat command `settings` |
 | Thumbnail tidak ke-embed / konversi gagal | Pastikan `ffmpeg` sudah terinstall dan bisa dipanggil dari terminal (`ffmpeg -version`) |
 

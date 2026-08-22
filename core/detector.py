@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 
 import yt_dlp
 
+from core.utils import build_cookies_from_browser
+
 URL_PATTERN = re.compile(r"^https?://[^\s]+$", re.IGNORECASE)
 
 
@@ -64,7 +66,7 @@ def _looks_like_image(entry: dict) -> bool:
     return ext in {"jpg", "jpeg", "png", "webp"} or entry.get("vcodec") == "none" and not entry.get("duration")
 
 
-def detect(url: str) -> DetectedContent:
+def detect(url: str, cookies_browser: str | None = None) -> DetectedContent:
     """Ekstrak info konten dari URL tanpa mendownload."""
     if not is_valid_url(url):
         raise DetectionError("URL tidak valid atau tidak didukung")
@@ -75,6 +77,10 @@ def detect(url: str) -> DetectedContent:
         "skip_download": True,
         "noplaylist": False,
     }
+
+    cookies = build_cookies_from_browser(cookies_browser)
+    if cookies:
+        ydl_opts["cookiesfrombrowser"] = cookies
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:

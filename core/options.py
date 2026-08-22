@@ -192,11 +192,33 @@ def show_help() -> None:
 
 
 def show_settings_menu(config: dict) -> str:
+    cookies_status = config.get("cookies_browser") or "none"
     console.print("\n[bold]Settings[/bold]")
     console.print(f"  [1] Ganti folder download default  [dim](saat ini: {config['download_folder']})[/dim]")
     console.print(f"  [2] Ganti max retry  [dim](saat ini: {config['max_retry']})[/dim]")
     console.print(f"  [3] Toggle auto-paste clipboard  [dim](saat ini: {'ON' if config['auto_paste'] else 'OFF'})[/dim]")
     console.print(f"  [4] Ganti naming template  [dim](saat ini: {config['naming_template']})[/dim]")
-    console.print("  [5] Reset ke default")
-    console.print("  [6] Kembali")
-    return Prompt.ask("→", default="6")
+    console.print(f"  [5] Pakai cookies dari browser  [dim](saat ini: {cookies_status})[/dim]")
+    console.print("  [6] Reset ke default")
+    console.print("  [7] Kembali")
+    return Prompt.ask("→", default="7")
+
+
+def ask_cookies_browser() -> str:
+    """Minta user pilih browser buat ambil cookies (buat konten yang butuh login)."""
+    console.print(
+        "\n[dim]Dipakai buat konten yang minta login (misal Instagram).[/dim]\n"
+        "[dim]Pastikan kamu sudah login ke platform tersebut di browser pilihanmu.[/dim]"
+    )
+    labels = ["Nonaktifkan", "Chrome", "Firefox", "Edge", "Brave", "Opera", "Vivaldi", "Safari"]
+    values = ["none", "chrome", "firefox", "edge", "brave", "opera", "vivaldi", "safari"]
+    for i, label in enumerate(labels):
+        console.print(f"  [{i + 1}] {label}")
+    raw = Prompt.ask("→", default="1")
+    try:
+        idx = int(raw) - 1
+        if 0 <= idx < len(values):
+            return values[idx]
+    except ValueError:
+        pass
+    return "none"
