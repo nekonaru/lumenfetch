@@ -38,8 +38,9 @@
 ## 📦 Requirements
 
 - **Python** 3.9 atau lebih baru
-- **[ffmpeg](https://ffmpeg.org/)** terpasang di sistem (dibutuhkan buat embed thumbnail, konversi video, dan ekstrak audio)
 - **Koneksi internet**
+
+> ffmpeg **tidak perlu diinstall manual** - Lumenfetch otomatis mengunduh dan memakai versi bundled-nya sendiri (lewat `static-ffmpeg`) begitu pertama kali dijalankan, persis seperti cara kerja `ffmpeg-static` di project Node.js.
 
 ### Belum pernah pakai terminal? Ikuti ini dulu
 
@@ -78,37 +79,6 @@ python --version
 # atau
 python3 --version
 ```
-
-### Belum punya ffmpeg?
-
-<details>
-<summary><b>🪟 Windows</b></summary>
-
-Cara paling gampang pakai [winget](https://learn.microsoft.com/windows/package-manager/winget/):
-```bash
-winget install ffmpeg
-```
-
-</details>
-
-<details>
-<summary><b>🍎 macOS</b></summary>
-
-```bash
-brew install ffmpeg
-```
-
-</details>
-
-<details>
-<summary><b>🐧 Linux</b></summary>
-
-```bash
-sudo apt install ffmpeg   # Ubuntu/Debian
-sudo pacman -S ffmpeg     # Arch
-```
-
-</details>
 
 ## 🚀 Instalasi
 
@@ -205,13 +175,14 @@ Preferensi kamu (folder simpan, max retry, auto-paste, naming template, cookies 
 
 | Masalah | Solusi |
 |---------|--------|
-| `ModuleNotFoundError: No module named 'yt_dlp'` / `'rich'` / `'pyperclip'` | Jalankan ulang `pip install -r requirements.txt` |
+| `ModuleNotFoundError: No module named 'yt_dlp'` / `'rich'` / `'pyperclip'` / `'static_ffmpeg'` | Jalankan ulang `pip install -r requirements.txt` |
 | `HTTP Error 403: Forbidden` (biasanya di YouTube) | Update yt-dlp ke versi terbaru: `pip install --upgrade yt-dlp` |
+| `Sign in to confirm you're not a bot` (YouTube) | Aktifkan fitur **Cookies dari Browser** di atas |
 | `Unexpected response from webpage request` (biasanya di TikTok) | Update yt-dlp ke versi terbaru: `pip install --upgrade yt-dlp` |
 | `❌ Konten ini private / tidak bisa diakses` (terutama Instagram) | Coba aktifkan fitur **Cookies dari Browser** di atas |
 | `❌ Format tidak tersedia untuk konten ini` | Coba quality/format lain - tidak semua platform punya semua kombinasi |
 | `❌ Koneksi internet bermasalah` terus muncul | Cek koneksi, atau naikkan `max_retry` lewat command `settings` |
-| Thumbnail tidak ke-embed / konversi gagal | Pastikan `ffmpeg` sudah terinstall dan bisa dipanggil dari terminal (`ffmpeg -version`) |
+| Video berhasil download tapi tidak ada suara | Jarang terjadi karena ffmpeg sudah bundled otomatis, tapi kalau muncul, jalankan ulang aplikasinya (ffmpeg diunduh ulang otomatis kalau file sebelumnya rusak) |
 
 ## 🗂️ Struktur Project
 

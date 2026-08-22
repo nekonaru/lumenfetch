@@ -45,16 +45,32 @@ class DownloadResult:
     elapsed_seconds: float
 
 
-def _quality_to_format_selector(quality: str) -> str:
-    mapping = {
-        "Best": "bestvideo*+bestaudio/best",
-        "1080p": "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
-        "720p": "bestvideo[height<=720]+bestaudio/best[height<=720]",
-        "480p": "bestvideo[height<=480]+bestaudio/best[height<=480]",
-        "360p": "bestvideo[height<=360]+bestaudio/best[height<=360]",
-        "Worst": "worstvideo*+worstaudio/worst",
+def _quality_to_format_selector(quality: str, ext: str) -> str:
+    """
+    Selector video. Diprioritaskan cari kombinasi video+audio yang codec-nya
+    sudah kompatibel dengan container tujuan (mis. mp4 = h264+aac), biar
+    ffmpeg tinggal remux (gabung) tanpa perlu re-encode ulang. Ini juga
+    yang bikin proses gabung audio+video jauh lebih stabil.
+    """
+    height_filters = {
+        "Best": "",
+        "1080p": "[height<=1080]",
+        "720p": "[height<=720]",
+        "480p": "[height<=480]",
+        "360p": "[height<=360]",
+        "Worst": "",
     }
-    return mapping.get(quality, "bestvideo*+bestaudio/best")
+    hf = height_filters.get(quality, "")
+
+    if quality == "Worst":
+        return f"worstvideo*{hf}+worstaudio/worst{hf}"
+
+    if ext == "mp4":
+        return (
+            f"bestvideo[ext=mp4]{hf}+bestaudio[ext=m4a]/"
+            f"bestvideo*{hf}+bestaudio/best{hf}"
+        )
+    return f"bestvideo*{hf}+bestaudio/best{hf}"
 
 
 def _audio_quality_to_kbps(quality: str) -> str:
@@ -171,6 +187,9 @@ def _build_ydl_opts(choice: DownloadChoice, dest: Path, cookies_browser: str | N
         "no_warnings": True,
         "noprogress": True,
         "retries": 0,  # retry ditangani manual di sini
+        # Player client alternatif buat YouTube - membantu mengurangi kemunculan
+        # error "Sign in to confirm you're not a bot" tanpa perlu cookies.
+        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
     }
 
     cookies = build_cookies_from_browser(cookies_browser)
@@ -178,12 +197,12 @@ def _build_ydl_opts(choice: DownloadChoice, dest: Path, cookies_browser: str | N
         opts["cookiesfrombrowser"] = cookies
 
     if choice.output_kind == "video":
-        opts["format"] = _quality_to_format_selector(choice.quality)
+        opts["format"] = _quality_to_format_selector(choice.quality, choice.fmt)
         opts["merge_output_format"] = choice.fmt
-        opts["postprocessors"] = [
-            {"key": "FFmpegVideoConvertor", "preferedformat": choice.fmt},
-            {"key": "EmbedThumbnail"},
-        ]
+        # Merge audio+video ditangani otomatis oleh yt-dlp lewat merge_output_format.
+        # Postprocessor tambahan cuma buat embed thumbnail, TIDAK re-encode ulang
+        # (re-encode ulang berisiko bikin track audio hilang kalau ffmpeg-nya bermasalah).
+        opts["postprocessors"] = [{"key": "EmbedThumbnail"}]
         opts["writethumbnail"] = True
 
     elif choice.output_kind == "audio":

@@ -6,7 +6,7 @@ naming template, resolve duplikat, config, validasi URL, dll).
 
 import pytest
 
-from core import utils
+from core import downloader, utils
 from core.detector import is_valid_url
 
 # ---------------------------------------------------------------------------
@@ -198,6 +198,31 @@ def test_clear_history(tmp_path, monkeypatch):
 )
 def test_build_cookies_from_browser(browser, expected):
     assert utils.build_cookies_from_browser(browser) == expected
+
+
+# ---------------------------------------------------------------------------
+# downloader._quality_to_format_selector
+# ---------------------------------------------------------------------------
+
+def test_format_selector_prefers_compatible_codecs_for_mp4():
+    selector = downloader._quality_to_format_selector("Best", "mp4")
+    assert "ext=mp4" in selector
+    assert "ext=m4a" in selector
+
+
+def test_format_selector_falls_back_for_non_mp4():
+    selector = downloader._quality_to_format_selector("Best", "webm")
+    assert "ext=mp4" not in selector
+
+
+def test_format_selector_applies_height_filter():
+    selector = downloader._quality_to_format_selector("720p", "mp4")
+    assert "height<=720" in selector
+
+
+def test_format_selector_worst_quality():
+    selector = downloader._quality_to_format_selector("Worst", "mp4")
+    assert "worstvideo" in selector and "worstaudio" in selector
 
 
 # ---------------------------------------------------------------------------

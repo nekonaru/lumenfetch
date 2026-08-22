@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pyperclip
+import static_ffmpeg
 from rich.console import Console
 from rich.prompt import Prompt
 
@@ -122,6 +123,9 @@ def process_url(url: str, config: dict) -> None:
 
 
 def main() -> None:
+    console.print("[dim]Menyiapkan ffmpeg...[/dim]")
+    static_ffmpeg.add_paths()  # Download/pasang ffmpeg bundled kalau belum ada, tambahkan ke PATH
+
     config = utils.load_config()
     options.show_header(VERSION)
 

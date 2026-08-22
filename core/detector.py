@@ -76,6 +76,7 @@ def detect(url: str, cookies_browser: str | None = None) -> DetectedContent:
         "no_warnings": True,
         "skip_download": True,
         "noplaylist": False,
+        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
     }
 
     cookies = build_cookies_from_browser(cookies_browser)
