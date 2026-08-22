@@ -33,7 +33,6 @@ def is_valid_url(text: str) -> bool:
 
 def _guess_content_type(info: dict) -> str:
     """Tentukan VIDEO / AUDIO / IMAGE berdasarkan info dari yt-dlp."""
-    extractor = (info.get("extractor") or "").lower()
     is_playlist = info.get("_type") == "playlist"
 
     if is_playlist:

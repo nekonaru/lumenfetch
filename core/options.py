@@ -4,7 +4,7 @@ Semua prompt/menu interaktif (pilih tipe output, quality, format, dll)
 memakai Rich. Tidak ada logic download di sini.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from rich.console import Console

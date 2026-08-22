@@ -202,15 +202,23 @@ Preferensi kamu (folder simpan, max retry, auto-paste, naming template, dan riwa
 
 ```
 lumenfetch/
-├── main.py              # Entry point & loop utama
+├── main.py                    # Entry point & loop utama
 ├── core/
-│   ├── downloader.py    # Logic download (yt-dlp API) + progress hook + retry
-│   ├── detector.py      # Deteksi platform & tipe konten
-│   ├── options.py       # Menu & prompt interaktif (rich)
-│   └── utils.py         # Sanitasi nama file, format size, config.json
-├── downloads/           # Folder output default
-├── config.json          # Preferensi user (auto-generate, tidak di-commit)
+│   ├── downloader.py          # Logic download (yt-dlp API) + progress hook + retry
+│   ├── detector.py            # Deteksi platform & tipe konten
+│   ├── options.py             # Menu & prompt interaktif (rich)
+│   └── utils.py               # Sanitasi nama file, format size, config.json
+├── tests/
+│   └── test_lumenfetch.py     # Unit test (pytest)
+├── .github/
+│   └── workflows/
+│       └── tests.yml          # CI: test & lint otomatis
+├── downloads/                 # Folder output default
+├── config.json                # Preferensi user (auto-generate, tidak di-commit)
 ├── requirements.txt
+├── requirements-dev.txt       # Dependency tambahan untuk development (pytest, ruff)
+├── pyproject.toml             # Konfigurasi ruff
+├── CONTRIBUTING.md
 ├── LICENSE
 └── README.md
 ```
@@ -229,9 +237,21 @@ lumenfetch/
 - [x] **Phase 3 - Reliability & Multi-platform**: retry otomatis, carousel gambar, cancel graceful
 - [x] **Phase 4 - Polish**: menu history, settings, help, naming template kustom
 
+## 🧪 Testing
+
+Ada unit test untuk fungsi-fungsi inti (sanitasi nama file, naming template, resolve duplikat, format ukuran/durasi, config, validasi URL, dll).
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/ -v
+ruff check .
+```
+
+CI (`.github/workflows/tests.yml`) otomatis menjalankan ini di setiap push & pull request ke `main`, di Python 3.9-3.12.
+
 ## 🤝 Kontribusi
 
-Pull request dan issue terbuka untuk siapa saja yang mau bantu kembangin Lumenfetch - mulai dari perbaikan bug, platform baru yang bermasalah, sampai fitur tambahan.
+Mau bantu kembangin Lumenfetch? Baca [`CONTRIBUTING.md`](CONTRIBUTING.md) untuk struktur project dan alur kontribusi.
 
 ## 👤 Author
 
