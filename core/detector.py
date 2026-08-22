@@ -4,6 +4,8 @@ Deteksi platform, tipe konten (VIDEO/IMAGE/AUDIO), judul, dan durasi
 dari sebuah URL memakai yt-dlp (tanpa download).
 """
 
+from __future__ import annotations
+
 import re
 from dataclasses import dataclass, field
 

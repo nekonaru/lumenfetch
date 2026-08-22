@@ -4,6 +4,8 @@ Semua prompt/menu interaktif (pilih tipe output, quality, format, dll)
 memakai Rich. Tidak ada logic download di sini.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
 

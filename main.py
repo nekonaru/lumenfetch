@@ -4,6 +4,8 @@ Lumenfetch - Universal Media Downloader (CLI)
 Entry point aplikasi.
 """
 
+from __future__ import annotations
+
 from datetime import datetime
 from pathlib import Path
 
