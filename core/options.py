@@ -105,11 +105,15 @@ def ask_image_choice(content: DetectedContent) -> DownloadChoice:
         console.print("  [2] Pilih tertentu")
         raw = Prompt.ask("→", default="1")
         if raw.strip() == "2":
-            nums = Prompt.ask("Nomor gambar (contoh: 1,3,5)")
-            try:
-                choice.selected_indices = [int(n.strip()) - 1 for n in nums.split(",") if n.strip()]
-            except ValueError:
-                choice.selected_indices = None
+            nums = Prompt.ask("Nomor gambar (contoh: 1,3,5) [dim](kosongkan = semua)[/dim]", default="")
+            nums = nums.strip()
+            if not nums:
+                choice.selected_indices = None  # kosong / enter doang -> download semua
+            else:
+                try:
+                    choice.selected_indices = [int(n.strip()) - 1 for n in nums.split(",") if n.strip()]
+                except ValueError:
+                    choice.selected_indices = None
     return choice
 
 

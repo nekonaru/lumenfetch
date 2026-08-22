@@ -88,9 +88,13 @@ def detect(url: str, cookies_browser: str | None = None) -> DetectedContent:
             info = ydl.extract_info(url, download=False)
     except yt_dlp.utils.DownloadError as e:
         msg = str(e).lower()
+        if "there is no video in this post" in msg or "no video formats" in msg:
+            raise DetectionError(
+                "Postingan foto Instagram (bukan reel/video) belum didukung yt-dlp - ini keterbatasan tool, bukan bug"
+            ) from e
         if "private" in msg or "login" in msg or "unavailable" in msg:
             raise DetectionError("Konten ini private / tidak bisa diakses") from e
-        if "unsupported url" in msg or "no video formats" in msg:
+        if "unsupported url" in msg:
             raise DetectionError("URL tidak valid atau tidak didukung") from e
         raise DetectionError("Koneksi internet bermasalah, coba lagi") from e
     except Exception as e:  # noqa: BLE001

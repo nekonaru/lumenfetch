@@ -180,6 +180,7 @@ Preferensi kamu (folder simpan, max retry, auto-paste, naming template, cookies 
 | `Sign in to confirm you're not a bot` (YouTube) | Aktifkan fitur **Cookies dari Browser** di atas |
 | `Unexpected response from webpage request` (biasanya di TikTok) | Update yt-dlp ke versi terbaru: `pip install --upgrade yt-dlp` |
 | `❌ Konten ini private / tidak bisa diakses` (terutama Instagram) | Coba aktifkan fitur **Cookies dari Browser** di atas |
+| `Postingan foto Instagram belum didukung yt-dlp` | Ini keterbatasan yt-dlp sendiri, bukan bug Lumenfetch - yt-dlp memang tidak reliable untuk post foto standalone (non-reel/video) di Instagram. Sudah dilaporkan bertahun-tahun di [issue tracker yt-dlp](https://github.com/yt-dlp/yt-dlp/issues) dan belum ada fix resmi |
 | `❌ Format tidak tersedia untuk konten ini` | Coba quality/format lain - tidak semua platform punya semua kombinasi |
 | `❌ Koneksi internet bermasalah` terus muncul | Cek koneksi, atau naikkan `max_retry` lewat command `settings` |
 | Video berhasil download tapi tidak ada suara | Jarang terjadi karena ffmpeg sudah bundled otomatis, tapi kalau muncul, jalankan ulang aplikasinya (ffmpeg diunduh ulang otomatis kalau file sebelumnya rusak) |
