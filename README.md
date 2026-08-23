@@ -26,7 +26,7 @@
 | 🎛 **Opsi dinamis** | Menu quality & format menyesuaikan sendiri sesuai tipe konten yang terdeteksi |
 | 🎞 **Video** | Pilihan quality Best/1080p/720p/480p/360p/Worst, format MP4/WEBM/MKV, thumbnail otomatis ter-embed |
 | 🎵 **Audio** | Ekstrak ke MP3/M4A/WAV/FLAC dengan pilihan bitrate |
-| 🖼 **Gambar & carousel** | Download satu gambar, semua sekaligus, atau pilih nomor tertentu (misal post Instagram multi-foto) - foto Instagram pakai fallback `instaloader` otomatis |
+| 🖼 **Gambar & carousel** | Download satu gambar, semua sekaligus, atau pilih nomor tertentu (misal post Instagram multi-foto) - foto Instagram pakai fallback `instaloader` otomatis, konversi JPG/PNG/WEBP berlaku di semua sumber gambar |
 | 📋 **Auto-paste clipboard** | Kalau ada link valid di clipboard, langsung ditawarkan tanpa perlu paste manual |
 | 📊 **Progress bar real-time** | Kecepatan, ukuran, dan estimasi waktu tersisa lewat `rich` |
 | 🔄 **Auto-retry** | Error koneksi dicoba ulang otomatis (default 3x), error fatal (private/invalid) langsung dilaporkan |

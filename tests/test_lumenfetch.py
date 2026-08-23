@@ -405,9 +405,16 @@ def test_extract_shortcode(url, expected_shortcode):
 def test_convert_image_skips_when_already_jpg(tmp_path):
     src = tmp_path / "foto.jpg"
     src.write_bytes(b"fake-jpg-content")
-    result = instagram_fallback._convert_image(src, "jpg")
+    result = utils.convert_image(src, "jpg")
     assert result == src
     assert result.exists()
+
+
+def test_convert_image_skips_when_jpeg_alias(tmp_path):
+    src = tmp_path / "foto.jpeg"
+    src.write_bytes(b"fake-jpeg-content")
+    result = utils.convert_image(src, "jpg")
+    assert result == src  # jpg dan jpeg dianggap sama
 
 
 def test_download_photos_respects_selected_indices(tmp_path, monkeypatch):
@@ -536,6 +543,101 @@ def test_format_selector_applies_height_filter():
 def test_format_selector_worst_quality():
     selector = downloader._quality_to_format_selector("Worst", "mp4")
     assert "worstvideo" in selector and "worstaudio" in selector
+
+
+# ---------------------------------------------------------------------------
+# downloader.download() - konversi format gambar (bug: diabaikan di luar Instagram)
+# ---------------------------------------------------------------------------
+
+def test_download_image_converts_to_requested_format(tmp_path, monkeypatch):
+    """
+    Regresi bug: menu ask_image_choice() menawarkan JPG/PNG/WEBP untuk semua
+    sumber gambar (bukan cuma Instagram), tapi dulu _build_ydl_opts() untuk
+    output_kind="image" cuma set format="best" tanpa postprocessor konversi
+    apa pun. Akibatnya pilihan PNG/WEBP diam-diam diabaikan - file yang
+    tersimpan selalu dalam format asli sumbernya (biasanya JPG), padahal
+    menu sudah menjanjikan konversi.
+    """
+    calls = []
+
+    def fake_convert_image(src, target_ext):
+        calls.append((src, target_ext))
+        converted = src.with_suffix(f".{target_ext}")
+        src.rename(converted)
+        return converted
+
+    monkeypatch.setattr(downloader, "convert_image", fake_convert_image)
+
+    class FakeYDL:
+        def __init__(self, opts):
+            self.opts = opts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def download(self, urls):
+            # yt-dlp nyimpen file dalam ekstensi ASLI sumbernya (jpg),
+            # meski outtmpl dituju ke ekstensi target user (png)
+            base = self.opts["outtmpl"].rsplit(".", 1)[0]
+            Path(f"{base}.jpg").write_bytes(b"fake-jpg-bytes")
+
+    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", FakeYDL)
+
+    class FakeContent:
+        url = "https://pinterest.com/pin/123"
+        platform = "Pinterest"
+        title = "Contoh Gambar"
+        entries = []  # single image, bukan multi-item
+
+    choice = DownloadChoice(output_kind="image", fmt="png")
+
+    result = downloader.download(FakeContent(), choice, tmp_path, "%(platform)s_%(title)s_%(year)s")
+
+    assert calls, "convert_image() tidak pernah dipanggil - bug konversi masih ada"
+    assert calls[0][1] == "png"
+    assert result.filepath.suffix == ".png"
+
+
+def test_download_image_skips_conversion_when_format_already_matches(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_convert_image(src, target_ext):
+        calls.append(target_ext)
+        return src  # sudah jpg, gak perlu convert
+
+    monkeypatch.setattr(downloader, "convert_image", fake_convert_image)
+
+    class FakeYDL:
+        def __init__(self, opts):
+            self.opts = opts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def download(self, urls):
+            base = self.opts["outtmpl"].rsplit(".", 1)[0]
+            Path(f"{base}.jpg").write_bytes(b"fake-jpg-bytes")
+
+    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", FakeYDL)
+
+    class FakeContent:
+        url = "https://pinterest.com/pin/123"
+        platform = "Pinterest"
+        title = "Contoh Gambar"
+        entries = []
+
+    choice = DownloadChoice(output_kind="image", fmt="jpg")
+
+    result = downloader.download(FakeContent(), choice, tmp_path, "%(platform)s_%(title)s_%(year)s")
+
+    assert calls == ["jpg"]  # convert_image tetap dipanggil (biar konsisten), tapi hasilnya sama
+    assert result.filepath.suffix == ".jpg"
 
 
 # ---------------------------------------------------------------------------

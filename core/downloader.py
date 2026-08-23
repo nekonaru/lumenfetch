@@ -23,7 +23,7 @@ from rich.progress import (
 
 from core.detector import DetectedContent
 from core.options import DownloadChoice
-from core.utils import build_cookies_from_browser, build_filename, find_indexed_files, resolve_duplicate
+from core.utils import build_cookies_from_browser, build_filename, convert_image, find_indexed_files, resolve_duplicate
 
 console = Console()
 
@@ -183,9 +183,56 @@ def download(
                 raise DownloadFailed(_friendly_message(_classify_error(e))) from e
 
     elapsed = time.time() - start_time
-    final_path, total_size, file_count = _resolve_final_path(dest, multi_item=is_multi_item)
+
+    if choice.output_kind == "image":
+        # Bug: menu ask_image_choice() menawarkan JPG/PNG/WEBP untuk SEMUA
+        # sumber gambar (thumbnail YouTube, galeri Pinterest/Reddit/X, dll),
+        # tapi yt-dlp sendiri cuma nyimpen file dalam format asli sumbernya
+        # (biasanya JPG) - pilihan PNG/WEBP diam-diam diabaikan kalau tidak
+        # dikonversi manual di sini. convert_image() sama persis dengan yang
+        # dipakai instagram_fallback.py, jadi konsisten di semua jalur gambar.
+        result_files = _find_result_files(dest, multi_item=is_multi_item)
+        converted_files = [convert_image(f, choice.fmt) for f in result_files]
+        if not converted_files:
+            final_path, total_size, file_count = dest, 0, 0
+        else:
+            final_path = converted_files[0]
+            total_size = sum(f.stat().st_size for f in converted_files if f.exists())
+            file_count = len(converted_files)
+    else:
+        final_path, total_size, file_count = _resolve_final_path(dest, multi_item=is_multi_item)
 
     return DownloadResult(filepath=final_path, size_bytes=total_size, elapsed_seconds=elapsed, file_count=file_count)
+
+
+def _find_result_files(dest: Path, multi_item: bool = False) -> list[Path]:
+    """
+    Cari semua file hasil download yang cocok dengan `dest` (urut). Dipakai
+    bareng oleh _resolve_final_path() (buat non-gambar) dan download() (buat
+    gambar, sebelum tahap konversi format) - satu sumber logic pencarian
+    file, biar tidak ada dua implementasi glob yang bisa saling berbeda
+    perilaku (itu yang pernah bikin _resolve_final_path() ketinggalan waktu
+    outtmpl multi-item pertama kali ditambahkan).
+    """
+    if multi_item:
+        return find_indexed_files(dest)
+
+    if dest.exists():
+        return [dest]
+
+    image_exts = {".jpg", ".jpeg", ".png", ".webp"}
+    matches = list(dest.parent.glob(f"{dest.stem}.*"))
+    non_image_matches = [m for m in matches if m.suffix.lower() not in image_exts]
+
+    # Thumbnail sisa (.jpg/.png/.webp) sengaja diprioritaskan PALING TERAKHIR,
+    # karena urutan glob() tidak dijamin dan kalau kebetulan thumbnail-nya yang
+    # kepilih duluan, path & ukuran yang dilaporkan ke user jadi salah (nunjuk
+    # ke gambar, bukan video/audio hasil download).
+    if non_image_matches:
+        return [non_image_matches[0]]
+    if matches:
+        return [matches[0]]
+    return []
 
 
 def _resolve_final_path(dest: Path, multi_item: bool = False) -> tuple[Path, int, int]:
@@ -205,34 +252,11 @@ def _resolve_final_path(dest: Path, multi_item: bool = False) -> tuple[Path, int
     sebagai prefix (mis. stem "Sunset" gak boleh kebawa "Sunset-Beach-1.jpg"
     milik konten "Sunset-Beach" yang beda).
     """
-    if multi_item:
-        matches = find_indexed_files(dest)
-        if not matches:
-            return dest, 0, 0
-        total_size = sum(m.stat().st_size for m in matches)
-        return matches[0], total_size, len(matches)
-
-    if dest.exists():
-        return dest, dest.stat().st_size, 1
-
-    image_exts = {".jpg", ".jpeg", ".png", ".webp"}
-    matches = list(dest.parent.glob(f"{dest.stem}.*"))
-    non_image_matches = [m for m in matches if m.suffix.lower() not in image_exts]
-
-    # Thumbnail sisa (.jpg/.png/.webp) sengaja diprioritaskan PALING TERAKHIR,
-    # karena urutan glob() tidak dijamin dan kalau kebetulan thumbnail-nya yang
-    # kepilih duluan, path & ukuran yang dilaporkan ke user jadi salah (nunjuk
-    # ke gambar, bukan video/audio hasil download).
-    if non_image_matches:
-        chosen = non_image_matches[0]
-    elif matches:
-        chosen = matches[0]
-    else:
-        chosen = dest
-
-    size = chosen.stat().st_size if chosen.exists() else 0
-    count = 1 if chosen.exists() else 0
-    return chosen, size, count
+    matches = _find_result_files(dest, multi_item=multi_item)
+    if not matches:
+        return dest, 0, 0
+    total_size = sum(m.stat().st_size for m in matches)
+    return matches[0], total_size, len(matches)
 
 
 def _build_ydl_opts(

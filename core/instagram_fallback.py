@@ -8,14 +8,13 @@ Pakai instaloader buat ambil metadata & URL media asli, lalu didownload manual.
 from __future__ import annotations
 
 import re
-import subprocess
 import urllib.request
 from pathlib import Path
 from typing import Callable
 
 import instaloader
 
-from core.utils import build_filename, resolve_duplicate
+from core.utils import build_filename, convert_image, resolve_duplicate
 
 SHORTCODE_PATTERN = re.compile(r"instagram\.com/(?:p|reel|tv)/([A-Za-z0-9_-]+)")
 
@@ -84,25 +83,6 @@ def detect_photo(url: str):
     )
 
 
-def _convert_image(src: Path, target_ext: str) -> Path:
-    """Convert jpg (format asli Instagram) ke png/webp pakai ffmpeg bundled, kalau perlu."""
-    if target_ext in ("jpg", "jpeg") or src.suffix.lstrip(".").lower() == target_ext:
-        return src
-
-    dest = src.with_suffix(f".{target_ext}")
-    try:
-        subprocess.run(
-            ["ffmpeg", "-y", "-i", str(src), str(dest)],
-            check=True,
-            capture_output=True,
-        )
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return src  # gagal konversi, tetap simpan versi jpg aslinya
-
-    src.unlink(missing_ok=True)
-    return dest
-
-
 def download_photos(
     content,
     selected_indices: list[int] | None,
@@ -130,7 +110,7 @@ def download_photos(
         dest = resolve_duplicate(output_folder / filename)
 
         urllib.request.urlretrieve(entry["url"], dest)  # noqa: S310 - URL dari instaloader (CDN Instagram resmi)
-        final_path = _convert_image(dest, target_ext)
+        final_path = convert_image(dest, target_ext)
         results.append(final_path)
 
         if on_progress:

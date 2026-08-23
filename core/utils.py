@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+import subprocess
 from datetime import datetime
 from pathlib import Path
 
@@ -190,6 +191,43 @@ def build_cookies_from_browser(browser: str | None):
     if browser not in SUPPORTED_COOKIE_BROWSERS:
         return None
     return (browser, None, None, None)
+
+
+def convert_image(src: Path, target_ext: str) -> Path:
+    """
+    Convert gambar ke format lain (jpg/png/webp) pakai ffmpeg yang sudah
+    di-bundle otomatis (static_ffmpeg, lihat main.py). Dipakai bersama oleh
+    downloader.py (gambar dari yt-dlp: thumbnail YouTube, galeri Pinterest/
+    Reddit/X, dll) dan instagram_fallback.py (foto Instagram), supaya
+    pilihan format PNG/WEBP di menu beneran dikonversi di SEMUA jalur
+    download gambar, bukan cuma satu platform tertentu.
+
+    Kalau target sudah sama dengan ekstensi asli, atau ffmpeg gagal/tidak
+    ketemu, file ASLI dikembalikan apa adanya - gagal konversi TIDAK BOLEH
+    bikin seluruh download dianggap gagal (gambarnya sendiri tetap
+    tersimpan utuh, cuma formatnya beda dari yang diminta).
+    """
+    target_ext = target_ext.lower().lstrip(".")
+    current_ext = src.suffix.lower().lstrip(".")
+
+    # jpg dan jpeg dianggap format yang sama
+    if {target_ext, current_ext} <= {"jpg", "jpeg"}:
+        return src
+    if target_ext == current_ext:
+        return src
+
+    dest = src.with_suffix(f".{target_ext}")
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", str(src), str(dest)],
+            check=True,
+            capture_output=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return src  # gagal konversi, tetap simpan file asli
+
+    src.unlink(missing_ok=True)
+    return dest
 
 
 def format_size(num_bytes: float) -> str:
