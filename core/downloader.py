@@ -134,7 +134,6 @@ def download(
 
     ext = choice.fmt
     filename = build_filename(content.platform, content.title, ext, naming_template)
-    dest = resolve_duplicate(output_folder / filename)
 
     # Konten gambar multi-item (carousel/galeri yang terdeteksi via yt-dlp,
     # BUKAN instaloader - itu punya jalur download sendiri) butuh perlakuan
@@ -142,7 +141,12 @@ def download(
     # kedownload, outtmpl butuh index unik biar antar-entry tidak saling
     # timpa, dan selected_indices (dari "pilih nomor tertentu") perlu benar-
     # benar dipakai lewat playlist_items - sebelumnya diabaikan begitu saja.
+    # PENTING: harus dihitung SEBELUM resolve_duplicate() dipanggil, karena
+    # deteksi duplikat untuk multi-item butuh pola pencarian yang beda
+    # (lihat docstring resolve_duplicate).
     is_multi_item = choice.output_kind == "image" and len(getattr(content, "entries", None) or []) > 1
+
+    dest = resolve_duplicate(output_folder / filename, multi_item=is_multi_item)
 
     ydl_opts = _build_ydl_opts(choice, dest, cookies_browser, multi_item=is_multi_item)
 

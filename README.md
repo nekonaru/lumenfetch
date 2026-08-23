@@ -33,7 +33,7 @@
 | 🗂 **Riwayat download** | 20 entri terakhir tersimpan, bisa dilihat kapan saja lewat command `history` |
 | ⚙️ **Pengaturan persisten** | Folder default, max retry, auto-paste, dan naming template diingat lewat `config.json` |
 | 🍪 **Cookies dari browser** | Opsional, buat konten yang minta login (misal Instagram) - ambil cookies dari Chrome/Firefox/Edge/dll |
-| 🧼 **Nama file aman** | Karakter ilegal disanitasi, duplikat otomatis dikasih suffix `(1)`, `(2)`, dst |
+| 🧼 **Nama file aman** | Karakter ilegal disanitasi, duplikat otomatis dikasih suffix `(1)`, `(2)`, dst - termasuk untuk galeri/carousel multi-gambar |
 | 🔔 **Auto-check update yt-dlp** | Tiap dibuka, dicek ke PyPI apakah ada versi yt-dlp lebih baru - gagal cek (mis. offline) diam-diam diabaikan |
 
 ## 📦 Requirements

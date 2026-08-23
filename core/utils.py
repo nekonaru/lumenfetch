@@ -129,16 +129,34 @@ def build_filename(platform: str, title: str, ext: str, template: str) -> str:
     return f"{base}.{ext}"
 
 
-def resolve_duplicate(path: Path) -> Path:
-    """Kalau nama file udah ada, tambahin suffix (1), (2), dst."""
-    if not path.exists():
+def resolve_duplicate(path: Path, multi_item: bool = False) -> Path:
+    """
+    Kalau nama file sudah ada, tambahin suffix (1), (2), dst ke base filename.
+
+    multi_item=True dipakai khusus buat galeri/carousel (outtmpl-nya nanti
+    dikasih suffix index seperti "-1.jpg", "-2.jpg" - lihat _build_ydl_opts
+    di downloader.py). File persis "{stem}.{ext}" TIDAK PERNAH benar-benar
+    dibuat untuk kasus ini, jadi mengecek exists() pada path itu sendiri
+    salah - selalu balik False meski sudah pernah didownload sebelumnya.
+    Yang perlu dicek adalah apakah ADA file dengan pola "{stem}-*.*" di
+    folder tujuan. Tanpa ini, download galeri yang sama dua kali diam-diam
+    menimpa hasil download pertama, alih-alih dapat suffix (1) seperti
+    perilaku normal untuk konten single-item.
+    """
+
+    def _already_exists(p: Path) -> bool:
+        if multi_item:
+            return any(p.parent.glob(f"{p.stem}-*.*"))
+        return p.exists()
+
+    if not _already_exists(path):
         return path
 
     stem, suffix = path.stem, path.suffix
     counter = 1
     while True:
         candidate = path.with_name(f"{stem}({counter}){suffix}")
-        if not candidate.exists():
+        if not _already_exists(candidate):
             return candidate
         counter += 1
 

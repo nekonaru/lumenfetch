@@ -126,6 +126,45 @@ def test_resolve_duplicate_increments_suffix(tmp_path):
     assert result == tmp_path / "file(2).mp4"
 
 
+def test_resolve_duplicate_multi_item_detects_existing_group(tmp_path):
+    """
+    Regresi: outtmpl multi-item (galeri/carousel) menghasilkan file dengan
+    suffix index ("Judul-1.jpg", "Judul-2.jpg", dst) - file persis
+    "Judul.jpg" TIDAK PERNAH benar-benar dibuat. Kalau resolve_duplicate()
+    dipanggil tanpa tau ini, ia salah menyimpulkan "belum pernah didownload"
+    padahal grupnya sudah ada, sehingga download kedua diam-diam menimpa
+    hasil download pertama alih-alih dapat suffix (1).
+    """
+    (tmp_path / "Judul-1.jpg").touch()
+    (tmp_path / "Judul-2.jpg").touch()
+
+    result = utils.resolve_duplicate(tmp_path / "Judul.jpg", multi_item=True)
+
+    assert result == tmp_path / "Judul(1).jpg"
+
+
+def test_resolve_duplicate_multi_item_no_existing_group(tmp_path):
+    result = utils.resolve_duplicate(tmp_path / "Judul.jpg", multi_item=True)
+    assert result == tmp_path / "Judul.jpg"
+
+
+def test_resolve_duplicate_multi_item_increments_when_both_groups_exist(tmp_path):
+    (tmp_path / "Judul-1.jpg").touch()
+    (tmp_path / "Judul(1)-1.jpg").touch()
+
+    result = utils.resolve_duplicate(tmp_path / "Judul.jpg", multi_item=True)
+
+    assert result == tmp_path / "Judul(2).jpg"
+
+
+def test_resolve_duplicate_single_item_unaffected_by_multi_item_default():
+    """multi_item default False - behavior lama untuk single-item tidak boleh berubah."""
+    import inspect
+
+    sig = inspect.signature(utils.resolve_duplicate)
+    assert sig.parameters["multi_item"].default is False
+
+
 # ---------------------------------------------------------------------------
 # format_size / format_duration
 # ---------------------------------------------------------------------------
@@ -514,6 +553,90 @@ def test_multi_item_no_selection_downloads_all(tmp_path):
     choice = DownloadChoice(output_kind="image", fmt="jpg", selected_indices=None)
     opts = downloader._build_ydl_opts(choice, tmp_path / "foto.jpg", multi_item=True)
     assert "playlist_items" not in opts
+
+
+def test_download_computes_multi_item_before_resolve_duplicate(tmp_path, monkeypatch):
+    """
+    Regresi integrasi: memastikan download() betul-betul menghitung
+    is_multi_item SEBELUM memanggil resolve_duplicate() dan meneruskannya -
+    bukan cuma unit test terisolasi pada resolve_duplicate() sendirian yang
+    bisa saja tetap "pass" meski urutan pemanggilannya di download() salah.
+    """
+    captured = {}
+
+    def fake_resolve_duplicate(path, multi_item=False):
+        captured["multi_item"] = multi_item
+        return path
+
+    monkeypatch.setattr(downloader, "resolve_duplicate", fake_resolve_duplicate)
+
+    class FakeYDL:
+        def __init__(self, opts):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def download(self, urls):
+            # Cukup berhenti di sini - yang mau diverifikasi adalah argumen
+            # resolve_duplicate() yang sudah terpanggil SEBELUM baris ini.
+            raise downloader.yt_dlp.utils.DownloadError("stop early buat testing")
+
+    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", FakeYDL)
+
+    class FakeGalleryContent:
+        url = "https://example.com/gallery-post"
+        platform = "Reddit"
+        title = "Galeri Foto"
+        entries = [{"url": "a"}, {"url": "b"}, {"url": "c"}]  # >1 entry -> harus multi_item
+
+    choice = DownloadChoice(output_kind="image", fmt="jpg", selected_indices=None)
+
+    with pytest.raises(downloader.DownloadFailed):
+        downloader.download(FakeGalleryContent(), choice, tmp_path, "%(platform)s_%(title)s_%(year)s", max_retry=0)
+
+    assert captured["multi_item"] is True
+
+
+def test_download_single_image_not_treated_as_multi_item(tmp_path, monkeypatch):
+    captured = {}
+
+    def fake_resolve_duplicate(path, multi_item=False):
+        captured["multi_item"] = multi_item
+        return path
+
+    monkeypatch.setattr(downloader, "resolve_duplicate", fake_resolve_duplicate)
+
+    class FakeYDL:
+        def __init__(self, opts):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def download(self, urls):
+            raise downloader.yt_dlp.utils.DownloadError("stop early buat testing")
+
+    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", FakeYDL)
+
+    class FakeSingleImageContent:
+        url = "https://example.com/single-photo"
+        platform = "Pinterest"
+        title = "Satu Foto"
+        entries = []  # cuma 1 gambar / tidak ada entries -> bukan multi_item
+
+    choice = DownloadChoice(output_kind="image", fmt="jpg", selected_indices=None)
+
+    with pytest.raises(downloader.DownloadFailed):
+        downloader.download(FakeSingleImageContent(), choice, tmp_path, "%(platform)s_%(title)s_%(year)s", max_retry=0)
+
+    assert captured["multi_item"] is False
 
 
 # ---------------------------------------------------------------------------
