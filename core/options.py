@@ -44,6 +44,20 @@ def show_header(version: str = "1.0.0") -> None:
     )
 
 
+def show_update_notice(installed_version: str, latest_version: str) -> None:
+    console.print(
+        Panel(
+            f"yt-dlp kamu versi [bold]{installed_version}[/bold], "
+            f"versi terbaru [bold green]{latest_version}[/bold green] sudah tersedia.\n"
+            "[dim]Platform (YouTube/TikTok/Instagram/dll) sering ubah sistem mereka, "
+            "jadi update yt-dlp disarankan biar tetap kompatibel:[/dim]\n"
+            "[bold cyan]pip install --upgrade yt-dlp[/bold cyan]",
+            title="🔔 Update yt-dlp tersedia",
+            border_style="yellow",
+        )
+    )
+
+
 def show_content_panel(content: DetectedContent) -> None:
     lines = [
         f"[bold]Platform[/bold]  : {content.platform}",

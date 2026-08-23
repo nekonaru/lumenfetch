@@ -14,7 +14,7 @@ import static_ffmpeg
 from rich.console import Console
 from rich.prompt import Prompt
 
-from core import instagram_fallback, options, utils
+from core import instagram_fallback, options, update_checker, utils
 from core.detector import DetectionError, detect, is_valid_url
 from core.downloader import DownloadCancelled, DownloadFailed, download
 
@@ -144,6 +144,10 @@ def process_url(url: str, config: dict) -> None:
 def main() -> None:
     console.print("[dim]Menyiapkan ffmpeg...[/dim]")
     static_ffmpeg.add_paths()  # Download/pasang ffmpeg bundled kalau belum ada, tambahkan ke PATH
+
+    has_update, installed_version, latest_version = update_checker.check_for_update()
+    if has_update and latest_version:
+        options.show_update_notice(installed_version, latest_version)
 
     config = utils.load_config()
     options.show_header(VERSION)

@@ -34,6 +34,7 @@
 | ⚙️ **Pengaturan persisten** | Folder default, max retry, auto-paste, dan naming template diingat lewat `config.json` |
 | 🍪 **Cookies dari browser** | Opsional, buat konten yang minta login (misal Instagram) - ambil cookies dari Chrome/Firefox/Edge/dll |
 | 🧼 **Nama file aman** | Karakter ilegal disanitasi, duplikat otomatis dikasih suffix `(1)`, `(2)`, dst |
+| 🔔 **Auto-check update yt-dlp** | Tiap dibuka, dicek ke PyPI apakah ada versi yt-dlp lebih baru - gagal cek (mis. offline) diam-diam diabaikan |
 
 ## 📦 Requirements
 
@@ -170,6 +171,20 @@ Buat nutupin celah ini, Lumenfetch otomatis "banting setir" pakai [`instaloader`
 - ✅ Post foto tunggal atau carousel foto → otomatis lewat `instaloader`, muncul opsi format (JPG/PNG/WEBP) dan pilih semua/tertentu seperti biasa
 - ⚠️ Post private yang kamu belum follow, atau butuh login → tetap gagal walau fallback aktif (baik `yt-dlp` maupun `instaloader` sama-sama butuh sesi login buat itu; coba fitur **Cookies dari Browser** di atas)
 
+## 🔔 Auto-check Update yt-dlp
+
+YouTube, TikTok, Instagram, dan platform lain sering ubah sistem mereka - jadi `yt-dlp` juga perlu sering di-update biar tetap kompatibel. Ini bukan "sekali fix, selesai selamanya", tapi proses berkelanjutan (mirip antivirus yang perlu update rutin).
+
+Buat bantu itu, tiap kali Lumenfetch dibuka, otomatis dicek ke PyPI apakah ada versi `yt-dlp` yang lebih baru dari yang terinstall. Kalau ada, muncul notice kayak gini:
+
+```
+🔔 Update yt-dlp tersedia
+yt-dlp kamu versi 2026.1.1, versi terbaru 2026.8.19 sudah tersedia.
+pip install --upgrade yt-dlp
+```
+
+Tinggal jalankan command yang ditampilkan. Kalau lagi offline atau PyPI nggak bisa diakses, pengecekan ini gagal diam-diam dan **tidak** menghalangi kamu pakai aplikasinya.
+
 ## 🗂 Naming & Konfigurasi
 
 Nama file mengikuti template di `config.json` (default: `%(platform)s_%(title)s_%(year)s`), contoh hasil:
@@ -205,6 +220,7 @@ lumenfetch/
 │   ├── detector.py            # Deteksi platform & tipe konten
 │   ├── options.py             # Menu & prompt interaktif (rich)
 │   ├── instagram_fallback.py  # Fallback foto Instagram pakai instaloader
+│   ├── update_checker.py      # Auto-check versi terbaru yt-dlp di PyPI
 │   └── utils.py               # Sanitasi nama file, format size, config.json
 ├── tests/
 │   └── test_lumenfetch.py     # Unit test (pytest)

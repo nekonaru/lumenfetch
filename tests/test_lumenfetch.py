@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from core import downloader, instagram_fallback, utils
+from core import downloader, instagram_fallback, update_checker, utils
 from core.detector import is_valid_url
 
 # ---------------------------------------------------------------------------
@@ -287,6 +287,61 @@ def test_download_photos_downloads_all_when_no_selection(tmp_path, monkeypatch):
     )
 
     assert len(results) == 2
+
+
+# ---------------------------------------------------------------------------
+# update_checker
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "version,expected",
+    [
+        ("2026.8.19", (2026, 8, 19)),
+        ("2025.1.1", (2025, 1, 1)),
+        ("2026.8.19.1", (2026, 8, 19, 1)),
+    ],
+)
+def test_version_tuple(version, expected):
+    assert update_checker._version_tuple(version) == expected
+
+
+def test_check_for_update_detects_newer_version(monkeypatch):
+    monkeypatch.setattr(update_checker, "get_installed_version", lambda: "2026.1.1")
+    monkeypatch.setattr(update_checker, "get_latest_version", lambda: "2026.8.19")
+
+    has_update, installed, latest = update_checker.check_for_update()
+
+    assert has_update is True
+    assert installed == "2026.1.1"
+    assert latest == "2026.8.19"
+
+
+def test_check_for_update_no_update_when_already_latest(monkeypatch):
+    monkeypatch.setattr(update_checker, "get_installed_version", lambda: "2026.8.19")
+    monkeypatch.setattr(update_checker, "get_latest_version", lambda: "2026.8.19")
+
+    has_update, installed, latest = update_checker.check_for_update()
+
+    assert has_update is False
+
+
+def test_check_for_update_fails_safely_when_no_internet(monkeypatch):
+    monkeypatch.setattr(update_checker, "get_installed_version", lambda: "2026.1.1")
+    monkeypatch.setattr(update_checker, "get_latest_version", lambda: None)
+
+    has_update, installed, latest = update_checker.check_for_update()
+
+    assert has_update is False
+    assert latest is None
+
+
+def test_get_latest_version_returns_none_on_network_error(monkeypatch):
+    def fake_urlopen(*args, **kwargs):
+        raise update_checker.URLError("no internet")
+
+    monkeypatch.setattr(update_checker.urllib.request, "urlopen", fake_urlopen)
+
+    assert update_checker.get_latest_version() is None
 
 
 # ---------------------------------------------------------------------------
