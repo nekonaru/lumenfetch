@@ -6,6 +6,7 @@ dan baca/tulis config.json.
 
 from __future__ import annotations
 
+import copy
 import json
 import re
 from datetime import datetime
@@ -31,22 +32,37 @@ ILLEGAL_CHARS = r'[\\/:*?"<>|]'
 MAX_TITLE_LEN = 80
 
 
+def get_default_config() -> dict:
+    """
+    Return salinan BENAR-BENAR terpisah dari DEFAULT_CONFIG (deep copy).
+
+    Wajib pakai ini (bukan DEFAULT_CONFIG.copy()) di manapun butuh config default,
+    karena "history" adalah list - shallow copy cuma menyalin referensinya,
+    bukan isinya. Kalau nanti list itu dimutasi (mis. lewat add_history_entry),
+    DEFAULT_CONFIG module-level ikut "tercemar" dan bocor ke semua config baru
+    yang dibuat sesudahnya, termasuk pas user reset ke default.
+    """
+    return copy.deepcopy(DEFAULT_CONFIG)
+
+
 def load_config() -> dict:
     """Baca config.json, buat default kalau belum ada / rusak."""
     if not CONFIG_PATH.exists():
-        save_config(DEFAULT_CONFIG)
-        return DEFAULT_CONFIG.copy()
+        fresh = get_default_config()
+        save_config(fresh)
+        return fresh
 
     try:
         with CONFIG_PATH.open("r", encoding="utf-8") as f:
             data = json.load(f)
         # Isi field yang hilang biar tetap kompatibel ke depan
-        merged = DEFAULT_CONFIG.copy()
+        merged = get_default_config()
         merged.update(data)
         return merged
     except (json.JSONDecodeError, OSError):
-        save_config(DEFAULT_CONFIG)
-        return DEFAULT_CONFIG.copy()
+        fresh = get_default_config()
+        save_config(fresh)
+        return fresh
 
 
 def save_config(config: dict) -> None:

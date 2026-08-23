@@ -159,11 +159,49 @@ def test_load_config_resets_on_corrupt_json(tmp_path, monkeypatch):
     assert config == utils.DEFAULT_CONFIG
 
 
+def test_get_default_config_returns_independent_copy():
+    """get_default_config() harus deep copy - mengubah hasilnya tidak boleh
+    ikut mengubah DEFAULT_CONFIG module-level ataupun salinan lain."""
+    a = utils.get_default_config()
+    b = utils.get_default_config()
+
+    a["history"].append({"title": "x"})
+
+    assert b["history"] == []
+    assert utils.DEFAULT_CONFIG["history"] == []
+
+
+def test_load_config_does_not_leak_history_across_instances(tmp_path, monkeypatch):
+    """
+    Regresi buat bug shared-mutable-default: DEFAULT_CONFIG.copy() itu shallow
+    copy, jadi list "history" di config hasil load_config() dulu nunjuk ke
+    object YANG SAMA dengan DEFAULT_CONFIG["history"]. Begitu add_history_entry()
+    memutasi list itu, DEFAULT_CONFIG ikut "tercemar" dan bocor ke SEMUA config
+    baru berikutnya - termasuk pas user pilih Settings > Reset ke default,
+    yang harusnya bersih total tapi malah masih bawa riwayat lama.
+    """
+    config_path_a = tmp_path / "a" / "config.json"
+    config_path_a.parent.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(utils, "CONFIG_PATH", config_path_a)
+    config_a = utils.load_config()
+    utils.add_history_entry(config_a, {"title": "video-a"})
+
+    # DEFAULT_CONFIG module-level tidak boleh ikut kotor
+    assert utils.DEFAULT_CONFIG["history"] == []
+
+    # Config baru (mis. simulasi "reset ke default") harus benar-benar bersih
+    config_path_b = tmp_path / "b" / "config.json"
+    config_path_b.parent.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(utils, "CONFIG_PATH", config_path_b)
+    config_b = utils.load_config()
+
+    assert config_b["history"] == []
+
+
 def test_add_history_entry_keeps_max_20(tmp_path, monkeypatch):
     config_path = tmp_path / "config.json"
     monkeypatch.setattr(utils, "CONFIG_PATH", config_path)
-    config = utils.DEFAULT_CONFIG.copy()
-    config["history"] = []
+    config = utils.get_default_config()
 
     for i in range(25):
         utils.add_history_entry(config, {"title": f"video-{i}"})
@@ -175,7 +213,7 @@ def test_add_history_entry_keeps_max_20(tmp_path, monkeypatch):
 def test_clear_history(tmp_path, monkeypatch):
     config_path = tmp_path / "config.json"
     monkeypatch.setattr(utils, "CONFIG_PATH", config_path)
-    config = utils.DEFAULT_CONFIG.copy()
+    config = utils.get_default_config()
     config["history"] = [{"title": "a"}, {"title": "b"}]
 
     utils.clear_history(config)

@@ -62,7 +62,7 @@ def handle_settings(config: dict) -> dict:
             utils.save_config(config)
         elif choice == "6":
             config.clear()
-            config.update(utils.DEFAULT_CONFIG.copy())
+            config.update(utils.get_default_config())
             utils.save_config(config)
             console.print("[green]Config direset ke default.[/green]")
         elif choice == "7":

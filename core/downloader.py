@@ -126,7 +126,7 @@ def download(
     """Download konten sesuai pilihan user, dengan retry otomatis untuk error koneksi."""
     output_folder.mkdir(parents=True, exist_ok=True)
 
-    ext = choice.fmt if choice.output_kind != "video" else choice.fmt
+    ext = choice.fmt
     filename = build_filename(content.platform, content.title, ext, naming_template)
     dest = resolve_duplicate(output_folder / filename)
 
@@ -172,11 +172,25 @@ def download(
 
 
 def _resolve_final_path(dest: Path) -> Path:
-    """yt-dlp kadang ganti ekstensi (mis. setelah postprocessing). Cari file yang benar-benar ada."""
+    """
+    yt-dlp kadang ganti ekstensi (mis. setelah postprocessing). Cari file yang
+    benar-benar ada. Thumbnail sisa (.jpg/.png/.webp) sengaja diprioritaskan
+    PALING TERAKHIR, karena urutan glob() tidak dijamin dan kalau kebetulan
+    thumbnail-nya yang kepilih duluan, path & ukuran yang dilaporkan ke user
+    jadi salah (nunjuk ke gambar, bukan video/audio hasil download).
+    """
     if dest.exists():
         return dest
+
+    image_exts = {".jpg", ".jpeg", ".png", ".webp"}
     matches = list(dest.parent.glob(f"{dest.stem}.*"))
-    return matches[0] if matches else dest
+    non_image_matches = [m for m in matches if m.suffix.lower() not in image_exts]
+
+    if non_image_matches:
+        return non_image_matches[0]
+    if matches:
+        return matches[0]
+    return dest
 
 
 def _build_ydl_opts(choice: DownloadChoice, dest: Path, cookies_browser: str | None = None) -> dict:

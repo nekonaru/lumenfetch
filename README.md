@@ -196,6 +196,8 @@ Instagram_Post-by-username_2026.jpg
 
 Preferensi kamu (folder simpan, max retry, auto-paste, naming template, cookies browser, dan riwayat) otomatis tersimpan di `config.json` - dibuat otomatis dengan nilai default saat pertama kali dijalankan, jadi nggak perlu disentuh manual kecuali mau kustomisasi lewat command `settings`.
 
+> **Catatan:** `config.json` dan folder `downloads/` default itu lokasinya **relatif terhadap folder tempat kamu menjalankan `python main.py`**, bukan relatif terhadap lokasi file `main.py` itu sendiri. Kalau kamu jalanin Lumenfetch dari folder yang beda-beda, config dan hasil download bisa "tercecer" di tempat berbeda. Disarankan selalu `cd` ke folder project dulu sebelum `python main.py`.
+
 ## ⚠️ Troubleshooting
 
 | Masalah | Solusi |
