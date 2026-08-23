@@ -211,6 +211,8 @@ Preferensi kamu (folder simpan, max retry, auto-paste, naming template, cookies 
 | `❌ Format tidak tersedia untuk konten ini` | Coba quality/format lain - tidak semua platform punya semua kombinasi |
 | `❌ Koneksi internet bermasalah` terus muncul | Cek koneksi, atau naikkan `max_retry` lewat command `settings` |
 | Video berhasil download tapi tidak ada suara | Jarang terjadi karena ffmpeg sudah bundled otomatis, tapi kalau muncul, jalankan ulang aplikasinya (ffmpeg diunduh ulang otomatis kalau file sebelumnya rusak) |
+| Ganti naming template di `settings` ditolak | Template cuma boleh pakai `%(platform)s`, `%(title)s`, `%(year)s` - ditolak otomatis kalau ada placeholder salah ketik, biar tidak bikin nama file error saat download |
+| Video format WEBM tidak ada thumbnail ter-embed | Ini memang keterbatasan yt-dlp - thumbnail embedding cuma didukung untuk MP4/MKV, bukan bug. File video WEBM-nya sendiri tetap utuh dan lengkap, cuma tanpa thumbnail |
 
 ## 🗂️ Struktur Project
 

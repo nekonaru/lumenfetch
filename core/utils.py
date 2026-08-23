@@ -93,14 +93,39 @@ def sanitize_filename(name: str) -> str:
     return name[:MAX_TITLE_LEN]
 
 
+def is_valid_naming_template(template: str) -> bool:
+    """
+    Cek apakah naming template valid sebelum disimpan ke config - dipakai di
+    handle_settings() supaya user tidak bisa nyimpen template yang bakal
+    bikin build_filename() crash (mis. placeholder salah ketik seperti
+    %(titel)s bukannya %(title)s).
+    """
+    try:
+        template % {"platform": "x", "title": "x", "year": 2026}
+    except (KeyError, ValueError, TypeError):
+        return False
+    return True
+
+
 def build_filename(platform: str, title: str, ext: str, template: str) -> str:
-    """Susun nama file berdasarkan naming template dari config."""
+    """
+    Susun nama file berdasarkan naming template dari config.
+
+    Fail-safe: kalau template ternyata tidak valid (mis. lolos tervalidasi
+    saat disimpan tapi rusak lewat edit manual config.json), otomatis
+    fallback ke template default - supaya kesalahan konfigurasi TIDAK PERNAH
+    bikin seluruh aplikasi crash pas lagi proses download.
+    """
     year = datetime.now().year
-    base = template % {
+    values = {
         "platform": sanitize_filename(platform or "Unknown"),
         "title": sanitize_filename(title or "untitled"),
         "year": year,
     }
+    try:
+        base = template % values
+    except (KeyError, ValueError, TypeError):
+        base = DEFAULT_CONFIG["naming_template"] % values
     return f"{base}.{ext}"
 
 

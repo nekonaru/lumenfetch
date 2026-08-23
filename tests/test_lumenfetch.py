@@ -10,6 +10,7 @@ import pytest
 
 from core import downloader, instagram_fallback, update_checker, utils
 from core.detector import is_valid_url
+from core.options import DownloadChoice
 
 # ---------------------------------------------------------------------------
 # sanitize_filename
@@ -63,6 +64,43 @@ def test_build_filename_falls_back_when_empty():
     template = "%(platform)s_%(title)s_%(year)s"
     result = utils.build_filename("", "", "mp3", template)
     assert result.startswith("Unknown_untitled_")
+
+
+def test_build_filename_never_crashes_on_invalid_template():
+    """
+    Regresi bug: user bebas ganti naming_template lewat settings tanpa
+    validasi. Template dengan placeholder salah ketik (mis. %(titel)s bukan
+    %(title)s) dulu bikin build_filename() raise KeyError mentah - dan
+    karena pemanggilannya di main.py ada DI LUAR try/except, ini bikin
+    seluruh aplikasi crash total. build_filename() sekarang WAJIB fail-safe:
+    fallback ke template default, bukan raise exception.
+    """
+    result = utils.build_filename("YouTube", "Judul Video", "mp4", "%(platform)s_%(titel)s_%(year)s")
+    assert result  # tidak raise, dan hasilnya tetap nama file yang valid
+    assert result.endswith(".mp4")
+
+
+def test_build_filename_falls_back_on_malformed_template():
+    result = utils.build_filename("YouTube", "Judul", "mp4", "%(platform)s_%s_broken")
+    assert result.endswith(".mp4")
+
+
+# ---------------------------------------------------------------------------
+# is_valid_naming_template
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "template,expected",
+    [
+        ("%(platform)s_%(title)s_%(year)s", True),
+        ("%(title)s only", True),
+        ("%(platform)s_%(titel)s_%(year)s", False),  # typo: titel bukan title
+        ("%(platform)s_%s_broken", False),
+        ("", True),  # string kosong valid (hasil filename cuma ".ext")
+    ],
+)
+def test_is_valid_naming_template(template, expected):
+    assert utils.is_valid_naming_template(template) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -405,6 +443,77 @@ def test_format_selector_applies_height_filter():
 def test_format_selector_worst_quality():
     selector = downloader._quality_to_format_selector("Worst", "mp4")
     assert "worstvideo" in selector and "worstaudio" in selector
+
+
+# ---------------------------------------------------------------------------
+# downloader._build_ydl_opts
+# ---------------------------------------------------------------------------
+
+def test_embed_thumbnail_skipped_for_webm(tmp_path):
+    """
+    Regresi bug: EmbedThumbnailPP milik yt-dlp cuma support mp3, mkv/mka,
+    ogg/opus/flac, m4a/mp4/m4v/mov - WEBM tidak ada di daftar itu dan dulu
+    selalu raise EmbedThumbnailPPError meski video-nya sendiri sukses utuh
+    ter-download, bikin user salah lihat pesan "gagal" padahal filenya ada.
+    """
+    choice = DownloadChoice(output_kind="video", quality="Best", fmt="webm")
+    opts = downloader._build_ydl_opts(choice, tmp_path / "video.webm")
+
+    assert opts["postprocessors"] == []
+    assert opts["writethumbnail"] is False
+
+
+@pytest.mark.parametrize("fmt", ["mp4", "mkv"])
+def test_embed_thumbnail_kept_for_supported_formats(tmp_path, fmt):
+    choice = DownloadChoice(output_kind="video", quality="Best", fmt=fmt)
+    opts = downloader._build_ydl_opts(choice, tmp_path / f"video.{fmt}")
+
+    assert {"key": "EmbedThumbnail"} in opts["postprocessors"]
+    assert opts["writethumbnail"] is True
+
+
+def test_noplaylist_true_by_default(tmp_path):
+    """
+    Regresi potensi bug: default yt-dlp untuk noplaylist itu False. Kalau
+    Lumenfetch tidak eksplisit menonaktifkannya, URL yang kebetulan
+    mengandung parameter playlist bisa diam-diam mendownload banyak entry
+    dan saling menimpa nama file yang sama (app ini didesain single-item,
+    bukan playlist manager).
+    """
+    choice = DownloadChoice(output_kind="video", quality="Best", fmt="mp4")
+    opts = downloader._build_ydl_opts(choice, tmp_path / "video.mp4")
+    assert opts["noplaylist"] is True
+
+
+def test_noplaylist_false_for_multi_item(tmp_path):
+    choice = DownloadChoice(output_kind="image", fmt="jpg")
+    opts = downloader._build_ydl_opts(choice, tmp_path / "foto.jpg", multi_item=True)
+    assert opts["noplaylist"] is False
+
+
+def test_multi_item_outtmpl_has_unique_index(tmp_path):
+    """Tanpa index unik, semua entry carousel/galeri saling timpa jadi 1 file."""
+    choice = DownloadChoice(output_kind="image", fmt="jpg")
+    opts = downloader._build_ydl_opts(choice, tmp_path / "foto.jpg", multi_item=True)
+    assert "playlist_index" in opts["outtmpl"] or "autonumber" in opts["outtmpl"]
+
+
+def test_multi_item_respects_selected_indices(tmp_path):
+    """
+    Regresi bug: selected_indices dari "pilih nomor tertentu" dulu cuma
+    dipakai di jalur instaloader, diabaikan total di jalur yt-dlp normal
+    (mis. galeri Reddit/X multi-gambar) - user pilih nomor tertentu tapi
+    yang kedownload tetap semua atau cuma 1 item pertama.
+    """
+    choice = DownloadChoice(output_kind="image", fmt="jpg", selected_indices=[0, 2, 4])
+    opts = downloader._build_ydl_opts(choice, tmp_path / "foto.jpg", multi_item=True)
+    assert opts["playlist_items"] == "1,3,5"  # dikonversi ke 1-indexed buat yt-dlp
+
+
+def test_multi_item_no_selection_downloads_all(tmp_path):
+    choice = DownloadChoice(output_kind="image", fmt="jpg", selected_indices=None)
+    opts = downloader._build_ydl_opts(choice, tmp_path / "foto.jpg", multi_item=True)
+    assert "playlist_items" not in opts
 
 
 # ---------------------------------------------------------------------------

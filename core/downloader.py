@@ -29,6 +29,11 @@ console = Console()
 
 CONNECTION_ERROR_HINTS = ("timed out", "timeout", "connection", "network", "temporary failure", "reset by peer")
 
+# Container video yang didukung EmbedThumbnailPP milik yt-dlp untuk video
+# (subset dari daftar lengkapnya: mp3, mkv/mka, ogg/opus/flac, m4a/mp4/m4v/mov).
+# WEBM sengaja TIDAK dimasukkan karena yt-dlp belum bisa embed thumbnail ke WEBM.
+EMBEDDABLE_VIDEO_FORMATS = {"mp4", "mkv"}
+
 
 class DownloadCancelled(Exception):
     """User cancel download (Ctrl+C)."""
@@ -130,7 +135,15 @@ def download(
     filename = build_filename(content.platform, content.title, ext, naming_template)
     dest = resolve_duplicate(output_folder / filename)
 
-    ydl_opts = _build_ydl_opts(choice, dest, cookies_browser)
+    # Konten gambar multi-item (carousel/galeri yang terdeteksi via yt-dlp,
+    # BUKAN instaloader - itu punya jalur download sendiri) butuh perlakuan
+    # khusus: noplaylist harus dimatikan supaya semua/entry terpilih ikut
+    # kedownload, outtmpl butuh index unik biar antar-entry tidak saling
+    # timpa, dan selected_indices (dari "pilih nomor tertentu") perlu benar-
+    # benar dipakai lewat playlist_items - sebelumnya diabaikan begitu saja.
+    is_multi_item = choice.output_kind == "image" and len(getattr(content, "entries", None) or []) > 1
+
+    ydl_opts = _build_ydl_opts(choice, dest, cookies_browser, multi_item=is_multi_item)
 
     attempt = 0
     start_time = time.time()
@@ -193,14 +206,32 @@ def _resolve_final_path(dest: Path) -> Path:
     return dest
 
 
-def _build_ydl_opts(choice: DownloadChoice, dest: Path, cookies_browser: str | None = None) -> dict:
-    outtmpl = str(dest.with_suffix(""))  # ekstensi diserahkan ke yt-dlp/postprocessor
+def _build_ydl_opts(
+    choice: DownloadChoice,
+    dest: Path,
+    cookies_browser: str | None = None,
+    multi_item: bool = False,
+) -> dict:
+    if multi_item:
+        # Sisipkan index unik di nama file, biar tiap entry carousel/galeri
+        # tidak saling timpa satu sama lain (sebelumnya SEMUA entry ditulis
+        # ke nama file yang sama persis, jadi cuma entry terakhir yang tersisa).
+        outtmpl = f"{dest.with_suffix('')}-%(playlist_index,autonumber)d"
+    else:
+        outtmpl = str(dest.with_suffix(""))  # ekstensi diserahkan ke yt-dlp/postprocessor
+
     opts = {
         "outtmpl": outtmpl + ".%(ext)s",
         "quiet": True,
         "no_warnings": True,
         "noprogress": True,
         "retries": 0,  # retry ditangani manual di sini
+        # Default matikan playlist expansion - Lumenfetch didesain buat download
+        # satu konten per URL, bukan playlist manager. Kalau ini dibiarkan aktif
+        # (default yt-dlp), URL yang kebetulan mengandung parameter playlist bisa
+        # diam-diam mendownload banyak entry dan saling menimpa nama file yang sama.
+        # Cuma dimatikan (False) untuk kasus gambar multi-item yang memang disengaja.
+        "noplaylist": not multi_item,
         # Player client alternatif buat YouTube - membantu mengurangi kemunculan
         # error "Sign in to confirm you're not a bot" tanpa perlu cookies.
         "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
@@ -214,10 +245,17 @@ def _build_ydl_opts(choice: DownloadChoice, dest: Path, cookies_browser: str | N
         opts["format"] = _quality_to_format_selector(choice.quality, choice.fmt)
         opts["merge_output_format"] = choice.fmt
         # Merge audio+video ditangani otomatis oleh yt-dlp lewat merge_output_format.
-        # Postprocessor tambahan cuma buat embed thumbnail, TIDAK re-encode ulang
-        # (re-encode ulang berisiko bikin track audio hilang kalau ffmpeg-nya bermasalah).
-        opts["postprocessors"] = [{"key": "EmbedThumbnail"}]
-        opts["writethumbnail"] = True
+        # EmbedThumbnail cuma didukung yt-dlp untuk container tertentu (mp3, mkv/mka,
+        # ogg/opus/flac, m4a/mp4/m4v/mov) - WEBM TIDAK ada di daftar itu dan bakal
+        # selalu raise EmbedThumbnailPPError kalau dipaksakan, padahal video-nya
+        # sendiri sudah berhasil didownload utuh. Jadi thumbnail sengaja di-skip
+        # khusus buat WEBM, bukan sekadar gagal diam-diam.
+        if choice.fmt in EMBEDDABLE_VIDEO_FORMATS:
+            opts["postprocessors"] = [{"key": "EmbedThumbnail"}]
+            opts["writethumbnail"] = True
+        else:
+            opts["postprocessors"] = []
+            opts["writethumbnail"] = False
 
     elif choice.output_kind == "audio":
         opts["format"] = "bestaudio/best"
@@ -232,5 +270,11 @@ def _build_ydl_opts(choice: DownloadChoice, dest: Path, cookies_browser: str | N
     elif choice.output_kind == "image":
         opts["format"] = "best"
         opts["skip_download"] = False
+        if multi_item and choice.selected_indices:
+            # selected_indices dari options.py 0-indexed (buat indexing Python list),
+            # tapi playlist_items yt-dlp butuh 1-indexed dipisah koma. Tanpa ini,
+            # pilihan "nomor tertentu" user diam-diam diabaikan dan semua entry
+            # tetap kedownload (atau sebaliknya, cuma entry pertama yang kena).
+            opts["playlist_items"] = ",".join(str(i + 1) for i in choice.selected_indices)
 
     return opts

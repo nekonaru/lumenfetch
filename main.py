@@ -55,8 +55,14 @@ def handle_settings(config: dict) -> dict:
             utils.save_config(config)
         elif choice == "4":
             new_template = Prompt.ask("Naming template baru", default=config["naming_template"])
-            config["naming_template"] = new_template
-            utils.save_config(config)
+            if utils.is_valid_naming_template(new_template):
+                config["naming_template"] = new_template
+                utils.save_config(config)
+            else:
+                console.print(
+                    "[red]Template tidak valid - pastikan cuma pakai "
+                    "%(platform)s, %(title)s, dan %(year)s.[/red]"
+                )
         elif choice == "5":
             config["cookies_browser"] = options.ask_cookies_browser()
             utils.save_config(config)
@@ -174,7 +180,13 @@ def main() -> None:
         if not raw:
             continue
 
-        process_url(raw, config)
+        try:
+            process_url(raw, config)
+        except Exception as e:  # noqa: BLE001
+            # Lapisan pertahanan terakhir - apa pun yang lolos dari semua
+            # penanganan error di process_url() TIDAK BOLEH bikin seluruh
+            # aplikasi crash dan kehilangan config/history yang belum tersimpan.
+            console.print(f"[red]❌ Terjadi kesalahan tak terduga: {e}[/red]")
 
         if not options.ask_again():
             console.print("\n👋 Sampai jumpa!")
