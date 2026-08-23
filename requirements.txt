@@ -2,3 +2,4 @@ yt-dlp
 rich
 pyperclip
 static-ffmpeg
+instaloader

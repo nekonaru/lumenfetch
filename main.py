@@ -14,7 +14,7 @@ import static_ffmpeg
 from rich.console import Console
 from rich.prompt import Prompt
 
-from core import options, utils
+from core import instagram_fallback, options, utils
 from core.detector import DetectionError, detect, is_valid_url
 from core.downloader import DownloadCancelled, DownloadFailed, download
 
@@ -98,26 +98,45 @@ def process_url(url: str, config: dict) -> None:
     }
 
     try:
-        result = download(
-            content,
-            choice,
-            output_folder,
-            config["naming_template"],
-            max_retry=config.get("max_retry", 3),
-            cookies_browser=config.get("cookies_browser"),
-        )
-        entry["size"] = utils.format_size(result.size_bytes)
-        entry["success"] = True
-        console.print(
-            f"\n✅ Selesai!\n"
-            f"   File  : {result.filepath}\n"
-            f"   Ukuran: {utils.format_size(result.size_bytes)}\n"
-            f"   Waktu : {result.elapsed_seconds:.0f} detik"
-        )
+        if content.raw_info.get("source") == "instaloader":
+            paths = instagram_fallback.download_photos(
+                content,
+                choice.selected_indices,
+                choice.fmt,
+                output_folder,
+                config["naming_template"],
+            )
+            total_size = sum(p.stat().st_size for p in paths if p.exists())
+            entry["size"] = utils.format_size(total_size)
+            entry["success"] = True
+            console.print(
+                f"\n✅ Selesai!\n"
+                f"   File  : {len(paths)} gambar tersimpan di {output_folder}\n"
+                f"   Ukuran total: {utils.format_size(total_size)}"
+            )
+        else:
+            result = download(
+                content,
+                choice,
+                output_folder,
+                config["naming_template"],
+                max_retry=config.get("max_retry", 3),
+                cookies_browser=config.get("cookies_browser"),
+            )
+            entry["size"] = utils.format_size(result.size_bytes)
+            entry["success"] = True
+            console.print(
+                f"\n✅ Selesai!\n"
+                f"   File  : {result.filepath}\n"
+                f"   Ukuran: {utils.format_size(result.size_bytes)}\n"
+                f"   Waktu : {result.elapsed_seconds:.0f} detik"
+            )
     except DownloadCancelled:
         console.print("[yellow]❌ Download dibatalkan oleh user[/yellow]")
     except DownloadFailed as e:
         console.print(f"[red]{e}[/red]")
+    except Exception as e:  # noqa: BLE001
+        console.print(f"[red]❌ Gagal download: {e}[/red]")
     finally:
         utils.add_history_entry(config, entry)
 

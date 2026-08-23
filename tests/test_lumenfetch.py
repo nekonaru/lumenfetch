@@ -4,9 +4,11 @@ Unit test untuk fungsi-fungsi inti (sanitasi nama file, format ukuran,
 naming template, resolve duplikat, config, validasi URL, dll).
 """
 
+from pathlib import Path
+
 import pytest
 
-from core import downloader, utils
+from core import downloader, instagram_fallback, utils
 from core.detector import is_valid_url
 
 # ---------------------------------------------------------------------------
@@ -198,6 +200,93 @@ def test_clear_history(tmp_path, monkeypatch):
 )
 def test_build_cookies_from_browser(browser, expected):
     assert utils.build_cookies_from_browser(browser) == expected
+
+
+# ---------------------------------------------------------------------------
+# instagram_fallback.is_instagram_url / extract_shortcode
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        ("https://www.instagram.com/p/DcVMpAwH6QC/", True),
+        ("https://instagram.com/reel/DcVLBJUS4Ie/?utm_source=x", True),
+        ("https://www.youtube.com/watch?v=abc", False),
+        ("https://tiktok.com/@user/video/123", False),
+    ],
+)
+def test_is_instagram_url(url, expected):
+    assert instagram_fallback.is_instagram_url(url) == expected
+
+
+@pytest.mark.parametrize(
+    "url,expected_shortcode",
+    [
+        ("https://www.instagram.com/p/DcVMpAwH6QC/", "DcVMpAwH6QC"),
+        ("https://www.instagram.com/p/DcVMpAwH6QC/?utm_source=ig_web_copy_link", "DcVMpAwH6QC"),
+        ("https://www.instagram.com/reel/DcVLBJUS4Ie/?igsi=abc", "DcVLBJUS4Ie"),
+        ("https://www.instagram.com/tv/AbC123_-xyz/", "AbC123_-xyz"),
+        ("https://www.youtube.com/watch?v=abc", None),
+    ],
+)
+def test_extract_shortcode(url, expected_shortcode):
+    assert instagram_fallback.extract_shortcode(url) == expected_shortcode
+
+
+def test_convert_image_skips_when_already_jpg(tmp_path):
+    src = tmp_path / "foto.jpg"
+    src.write_bytes(b"fake-jpg-content")
+    result = instagram_fallback._convert_image(src, "jpg")
+    assert result == src
+    assert result.exists()
+
+
+def test_download_photos_respects_selected_indices(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_urlretrieve(url, dest):
+        calls.append(url)
+        Path(dest).write_bytes(b"fake-image-bytes")
+
+    monkeypatch.setattr(instagram_fallback.urllib.request, "urlretrieve", fake_urlretrieve)
+
+    class FakeContent:
+        platform = "Instagram"
+        title = "Judul Post"
+        entries = [{"url": "https://x/1.jpg"}, {"url": "https://x/2.jpg"}, {"url": "https://x/3.jpg"}]
+
+    results = instagram_fallback.download_photos(
+        FakeContent(),
+        selected_indices=[0, 2],
+        target_ext="jpg",
+        output_folder=tmp_path,
+        naming_template="%(platform)s_%(title)s_%(year)s",
+    )
+
+    assert len(results) == 2
+    assert calls == ["https://x/1.jpg", "https://x/3.jpg"]
+
+
+def test_download_photos_downloads_all_when_no_selection(tmp_path, monkeypatch):
+    def fake_urlretrieve(url, dest):
+        Path(dest).write_bytes(b"fake-image-bytes")
+
+    monkeypatch.setattr(instagram_fallback.urllib.request, "urlretrieve", fake_urlretrieve)
+
+    class FakeContent:
+        platform = "Instagram"
+        title = "Judul Post"
+        entries = [{"url": "https://x/1.jpg"}, {"url": "https://x/2.jpg"}]
+
+    results = instagram_fallback.download_photos(
+        FakeContent(),
+        selected_indices=None,
+        target_ext="jpg",
+        output_folder=tmp_path,
+        naming_template="%(platform)s_%(title)s_%(year)s",
+    )
+
+    assert len(results) == 2
 
 
 # ---------------------------------------------------------------------------

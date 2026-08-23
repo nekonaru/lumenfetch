@@ -26,7 +26,7 @@
 | 🎛 **Opsi dinamis** | Menu quality & format menyesuaikan sendiri sesuai tipe konten yang terdeteksi |
 | 🎞 **Video** | Pilihan quality Best/1080p/720p/480p/360p/Worst, format MP4/WEBM/MKV, thumbnail otomatis ter-embed |
 | 🎵 **Audio** | Ekstrak ke MP3/M4A/WAV/FLAC dengan pilihan bitrate |
-| 🖼 **Gambar & carousel** | Download satu gambar, semua sekaligus, atau pilih nomor tertentu (misal post Instagram multi-foto) |
+| 🖼 **Gambar & carousel** | Download satu gambar, semua sekaligus, atau pilih nomor tertentu (misal post Instagram multi-foto) - foto Instagram pakai fallback `instaloader` otomatis |
 | 📋 **Auto-paste clipboard** | Kalau ada link valid di clipboard, langsung ditawarkan tanpa perlu paste manual |
 | 📊 **Progress bar real-time** | Kecepatan, ukuran, dan estimasi waktu tersisa lewat `rich` |
 | 🔄 **Auto-retry** | Error koneksi dicoba ulang otomatis (default 3x), error fatal (private/invalid) langsung dilaporkan |
@@ -160,6 +160,16 @@ Setelah aktif, Lumenfetch akan meminjam cookies dari browser itu setiap kali men
 
 > **Catatan:** pastikan browser yang dipilih sedang tidak dalam keadaan tertutup total saat digunakan di beberapa OS (khususnya Chrome di Windows kadang mengunci file cookies saat browser terbuka). Kalau muncul error terkait cookies, coba tutup browser-nya dulu lalu ulangi.
 
+## 📸 Foto Instagram (Fallback Otomatis)
+
+`yt-dlp` yang jadi mesin utama Lumenfetch punya keterbatasan lama: tidak reliable untuk postingan **foto standalone** di Instagram (bukan reel/video) - ini sudah dilaporkan bertahun-tahun di [issue tracker yt-dlp](https://github.com/yt-dlp/yt-dlp/issues) tanpa fix resmi.
+
+Buat nutupin celah ini, Lumenfetch otomatis "banting setir" pakai [`instaloader`](https://instaloader.github.io/) (library Python yang memang didesain khusus buat Instagram) begitu mendeteksi kasus ini - kamu nggak perlu ngapa-ngapain, prosesnya transparan:
+
+- ✅ Reel/video Instagram → tetap lewat `yt-dlp` seperti biasa
+- ✅ Post foto tunggal atau carousel foto → otomatis lewat `instaloader`, muncul opsi format (JPG/PNG/WEBP) dan pilih semua/tertentu seperti biasa
+- ⚠️ Post private yang kamu belum follow, atau butuh login → tetap gagal walau fallback aktif (baik `yt-dlp` maupun `instaloader` sama-sama butuh sesi login buat itu; coba fitur **Cookies dari Browser** di atas)
+
 ## 🗂 Naming & Konfigurasi
 
 Nama file mengikuti template di `config.json` (default: `%(platform)s_%(title)s_%(year)s`), contoh hasil:
@@ -180,7 +190,7 @@ Preferensi kamu (folder simpan, max retry, auto-paste, naming template, cookies 
 | `Sign in to confirm you're not a bot` (YouTube) | Aktifkan fitur **Cookies dari Browser** di atas |
 | `Unexpected response from webpage request` (biasanya di TikTok) | Update yt-dlp ke versi terbaru: `pip install --upgrade yt-dlp` |
 | `❌ Konten ini private / tidak bisa diakses` (terutama Instagram) | Coba aktifkan fitur **Cookies dari Browser** di atas |
-| `Postingan foto Instagram belum didukung yt-dlp` | Ini keterbatasan yt-dlp sendiri, bukan bug Lumenfetch - yt-dlp memang tidak reliable untuk post foto standalone (non-reel/video) di Instagram. Sudah dilaporkan bertahun-tahun di [issue tracker yt-dlp](https://github.com/yt-dlp/yt-dlp/issues) dan belum ada fix resmi |
+| Foto standalone Instagram (bukan reel) | Otomatis ditangani lewat fallback `instaloader` - tidak perlu tindakan manual, lihat bagian "Instagram" di bawah |
 | `❌ Format tidak tersedia untuk konten ini` | Coba quality/format lain - tidak semua platform punya semua kombinasi |
 | `❌ Koneksi internet bermasalah` terus muncul | Cek koneksi, atau naikkan `max_retry` lewat command `settings` |
 | Video berhasil download tapi tidak ada suara | Jarang terjadi karena ffmpeg sudah bundled otomatis, tapi kalau muncul, jalankan ulang aplikasinya (ffmpeg diunduh ulang otomatis kalau file sebelumnya rusak) |
@@ -194,6 +204,7 @@ lumenfetch/
 │   ├── downloader.py          # Logic download (yt-dlp API) + progress hook + retry
 │   ├── detector.py            # Deteksi platform & tipe konten
 │   ├── options.py             # Menu & prompt interaktif (rich)
+│   ├── instagram_fallback.py  # Fallback foto Instagram pakai instaloader
 │   └── utils.py               # Sanitasi nama file, format size, config.json
 ├── tests/
 │   └── test_lumenfetch.py     # Unit test (pytest)

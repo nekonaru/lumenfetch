@@ -89,9 +89,11 @@ def detect(url: str, cookies_browser: str | None = None) -> DetectedContent:
     except yt_dlp.utils.DownloadError as e:
         msg = str(e).lower()
         if "there is no video in this post" in msg or "no video formats" in msg:
-            raise DetectionError(
-                "Postingan foto Instagram (bukan reel/video) belum didukung yt-dlp - ini keterbatasan tool, bukan bug"
-            ) from e
+            from core import instagram_fallback  # noqa: PLC0415 - lazy import, hindari circular import
+
+            if instagram_fallback.is_instagram_url(url):
+                return instagram_fallback.detect_photo(url)
+            raise DetectionError("Konten ini tidak berisi video yang bisa didownload") from e
         if "private" in msg or "login" in msg or "unavailable" in msg:
             raise DetectionError("Konten ini private / tidak bisa diakses") from e
         if "unsupported url" in msg:
