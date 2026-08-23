@@ -517,6 +517,77 @@ def test_multi_item_no_selection_downloads_all(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# downloader._resolve_final_path
+# ---------------------------------------------------------------------------
+
+def test_resolve_final_path_single_item_exact_match(tmp_path):
+    dest = tmp_path / "video.mp4"
+    dest.write_bytes(b"fake-video-content")
+
+    path, size, count = downloader._resolve_final_path(dest)
+
+    assert path == dest
+    assert size == len(b"fake-video-content")
+    assert count == 1
+
+
+def test_resolve_final_path_single_item_changed_extension(tmp_path):
+    """yt-dlp kadang ganti ekstensi dari yang diminta (mis. setelah postprocessing)."""
+    dest = tmp_path / "video.mp4"
+    actual = tmp_path / "video.mkv"
+    actual.write_bytes(b"fake-video-content")
+
+    path, size, count = downloader._resolve_final_path(dest)
+
+    assert path == actual
+    assert count == 1
+
+
+def test_resolve_final_path_ignores_leftover_thumbnail(tmp_path):
+    dest = tmp_path / "video.mp4"
+    (tmp_path / "video.jpg").write_bytes(b"thumbnail-sisa")  # thumbnail yang ketinggalan
+    (tmp_path / "video.mkv").write_bytes(b"video-asli-lebih-besar")
+
+    path, size, count = downloader._resolve_final_path(dest)
+
+    assert path.suffix == ".mkv"  # bukan .jpg thumbnail
+    assert count == 1
+
+
+def test_resolve_final_path_no_file_found(tmp_path):
+    path, size, count = downloader._resolve_final_path(tmp_path / "tidak-ada.mp4")
+    assert size == 0
+    assert count == 0
+
+
+def test_resolve_final_path_multi_item_finds_all_files(tmp_path):
+    """
+    Regresi: fix multi-item ngubah outtmpl jadi punya suffix index
+    ("Judul-1.jpg", "Judul-2.jpg", dst), tapi _resolve_final_path() dulu masih
+    nyari pola tanpa suffix ("Judul.*") - jadi SELALU gagal ketemu file
+    meskipun semua gambar sukses didownload, akibatnya dilaporkan sukses tapi
+    dengan path yang gak exist dan ukuran 0 byte.
+    """
+    dest = tmp_path / "Judul.jpg"
+    (tmp_path / "Judul-1.jpg").write_bytes(b"gambar-satu")
+    (tmp_path / "Judul-2.jpg").write_bytes(b"gambar-dua-lebih-panjang")
+    (tmp_path / "Judul-3.jpg").write_bytes(b"gambar-tiga")
+
+    path, size, count = downloader._resolve_final_path(dest, multi_item=True)
+
+    assert count == 3
+    assert path.exists()
+    assert size == len(b"gambar-satu") + len(b"gambar-dua-lebih-panjang") + len(b"gambar-tiga")
+
+
+def test_resolve_final_path_multi_item_no_files_found(tmp_path):
+    dest = tmp_path / "Judul.jpg"
+    path, size, count = downloader._resolve_final_path(dest, multi_item=True)
+    assert count == 0
+    assert size == 0
+
+
+# ---------------------------------------------------------------------------
 # detector.is_valid_url
 # ---------------------------------------------------------------------------
 

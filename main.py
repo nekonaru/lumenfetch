@@ -130,13 +130,25 @@ def process_url(url: str, config: dict) -> None:
                 cookies_browser=config.get("cookies_browser"),
             )
             entry["size"] = utils.format_size(result.size_bytes)
-            entry["success"] = True
-            console.print(
-                f"\n✅ Selesai!\n"
-                f"   File  : {result.filepath}\n"
-                f"   Ukuran: {utils.format_size(result.size_bytes)}\n"
-                f"   Waktu : {result.elapsed_seconds:.0f} detik"
-            )
+            entry["success"] = result.file_count > 0
+
+            if not entry["success"]:
+                console.print("[red]❌ Terjadi kesalahan saat download - file hasil tidak ditemukan[/red]")
+            elif result.file_count > 1:
+                # Hasil multi-item (galeri/carousel, bukan single video/audio/gambar)
+                console.print(
+                    f"\n✅ Selesai!\n"
+                    f"   File  : {result.file_count} gambar tersimpan di {output_folder}\n"
+                    f"   Ukuran total: {utils.format_size(result.size_bytes)}\n"
+                    f"   Waktu : {result.elapsed_seconds:.0f} detik"
+                )
+            else:
+                console.print(
+                    f"\n✅ Selesai!\n"
+                    f"   File  : {result.filepath}\n"
+                    f"   Ukuran: {utils.format_size(result.size_bytes)}\n"
+                    f"   Waktu : {result.elapsed_seconds:.0f} detik"
+                )
     except DownloadCancelled:
         console.print("[yellow]❌ Download dibatalkan oleh user[/yellow]")
     except DownloadFailed as e:

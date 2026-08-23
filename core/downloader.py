@@ -48,6 +48,7 @@ class DownloadResult:
     filepath: Path
     size_bytes: int
     elapsed_seconds: float
+    file_count: int = 1  # >1 kalau multi-item (galeri/carousel via yt-dlp, bukan Instagram)
 
 
 def _quality_to_format_selector(quality: str, ext: str) -> str:
@@ -178,32 +179,50 @@ def download(
                 raise DownloadFailed(_friendly_message(_classify_error(e))) from e
 
     elapsed = time.time() - start_time
-    final_path = _resolve_final_path(dest)
-    size = final_path.stat().st_size if final_path.exists() else 0
+    final_path, total_size, file_count = _resolve_final_path(dest, multi_item=is_multi_item)
 
-    return DownloadResult(filepath=final_path, size_bytes=size, elapsed_seconds=elapsed)
+    return DownloadResult(filepath=final_path, size_bytes=total_size, elapsed_seconds=elapsed, file_count=file_count)
 
 
-def _resolve_final_path(dest: Path) -> Path:
+def _resolve_final_path(dest: Path, multi_item: bool = False) -> tuple[Path, int, int]:
     """
-    yt-dlp kadang ganti ekstensi (mis. setelah postprocessing). Cari file yang
-    benar-benar ada. Thumbnail sisa (.jpg/.png/.webp) sengaja diprioritaskan
-    PALING TERAKHIR, karena urutan glob() tidak dijamin dan kalau kebetulan
-    thumbnail-nya yang kepilih duluan, path & ukuran yang dilaporkan ke user
-    jadi salah (nunjuk ke gambar, bukan video/audio hasil download).
+    Return (path_representatif, total_size_bytes, jumlah_file).
+
+    yt-dlp kadang ganti ekstensi (mis. setelah postprocessing), dan untuk
+    multi_item outtmpl-nya punya suffix index (lihat _build_ydl_opts), jadi
+    TIDAK PERNAH ada file persis di `dest` - harus dicari lewat glob pola
+    "{stem}-*.*", bukan "{stem}.*". Kalau ini kepakai pola yang salah,
+    aplikasi bakal lapor "sukses" tapi filepath-nya gak exist dan size 0,
+    padahal file-nya beneran ada.
     """
+    if multi_item:
+        matches = sorted(m for m in dest.parent.glob(f"{dest.stem}-*.*") if m.is_file())
+        if not matches:
+            return dest, 0, 0
+        total_size = sum(m.stat().st_size for m in matches)
+        return matches[0], total_size, len(matches)
+
     if dest.exists():
-        return dest
+        return dest, dest.stat().st_size, 1
 
     image_exts = {".jpg", ".jpeg", ".png", ".webp"}
     matches = list(dest.parent.glob(f"{dest.stem}.*"))
     non_image_matches = [m for m in matches if m.suffix.lower() not in image_exts]
 
+    # Thumbnail sisa (.jpg/.png/.webp) sengaja diprioritaskan PALING TERAKHIR,
+    # karena urutan glob() tidak dijamin dan kalau kebetulan thumbnail-nya yang
+    # kepilih duluan, path & ukuran yang dilaporkan ke user jadi salah (nunjuk
+    # ke gambar, bukan video/audio hasil download).
     if non_image_matches:
-        return non_image_matches[0]
-    if matches:
-        return matches[0]
-    return dest
+        chosen = non_image_matches[0]
+    elif matches:
+        chosen = matches[0]
+    else:
+        chosen = dest
+
+    size = chosen.stat().st_size if chosen.exists() else 0
+    count = 1 if chosen.exists() else 0
+    return chosen, size, count
 
 
 def _build_ydl_opts(
