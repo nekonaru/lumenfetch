@@ -144,9 +144,23 @@ def find_indexed_files(dest: Path) -> list[Path]:
     "*.*" longgar. Dengan regex `-\\d+\\.` di akhir, "Sunset-Beach-1.jpg"
     tidak match untuk stem "Sunset" (karena setelah "Sunset-" karakternya
     "B", bukan digit), tapi tetap match buat stem "Sunset-Beach" itu sendiri.
+
+    Hasilnya diurutkan NUMERIK berdasarkan angka index-nya (bukan alfabetis
+    dari nama file) - kalau pakai sorted() string biasa, "Galeri-10.jpg"
+    bakal muncul SEBELUM "Galeri-2.jpg" (perbandingan karakter '1' < '2'),
+    padahal urutan aslinya seharusnya 2 dulu baru 10.
     """
-    pattern = re.compile(rf"^{re.escape(dest.stem)}-\d+\.[^.]+$")
-    return sorted(p for p in dest.parent.glob(f"{dest.stem}-*.*") if p.is_file() and pattern.match(p.name))
+    pattern = re.compile(rf"^{re.escape(dest.stem)}-(\d+)\.[^.]+$")
+    indexed_matches = []
+    for p in dest.parent.glob(f"{dest.stem}-*.*"):
+        if not p.is_file():
+            continue
+        m = pattern.match(p.name)
+        if m:
+            indexed_matches.append((int(m.group(1)), p))
+
+    indexed_matches.sort(key=lambda pair: pair[0])
+    return [p for _, p in indexed_matches]
 
 
 def resolve_duplicate(path: Path, multi_item: bool = False) -> Path:

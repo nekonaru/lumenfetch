@@ -179,6 +179,23 @@ def test_find_indexed_files_matches_numeric_suffix(tmp_path):
     assert len(result) == 3
 
 
+def test_find_indexed_files_sorts_numerically_not_alphabetically(tmp_path):
+    """
+    Regresi: sorted() string biasa bikin "Galeri-10.jpg" muncul SEBELUM
+    "Galeri-2.jpg" (perbandingan karakter '1' < '2'), padahal urutan aslinya
+    seharusnya 2 dulu baru 10. Harus diurutkan numerik berdasarkan angka
+    index-nya, bukan alfabetis dari nama file.
+    """
+    # sengaja dibuat gak berurutan biar gak kebetulan lolos meski logic salah
+    (tmp_path / "Galeri-10.jpg").touch()
+    (tmp_path / "Galeri-2.jpg").touch()
+    (tmp_path / "Galeri-1.jpg").touch()
+
+    result = utils.find_indexed_files(tmp_path / "Galeri.jpg")
+
+    assert [p.name for p in result] == ["Galeri-1.jpg", "Galeri-2.jpg", "Galeri-10.jpg"]
+
+
 def test_find_indexed_files_does_not_false_positive_on_prefix_overlap(tmp_path):
     """
     Regresi edge case: glob polos "{stem}-*.*" false-positive kalau ada
