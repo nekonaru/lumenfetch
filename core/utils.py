@@ -129,6 +129,25 @@ def build_filename(platform: str, title: str, ext: str, template: str) -> str:
     return f"{base}.{ext}"
 
 
+def find_indexed_files(dest: Path) -> list[Path]:
+    """
+    Cari file hasil outtmpl multi-item: pola "{stem}-<angka>.<ext>" persis
+    (index-nya dari %(playlist_index,autonumber)d di yt-dlp, jadi selalu
+    angka murni).
+
+    SENGAJA pakai regex yang di-anchor ke akhir nama file, BUKAN glob
+    "{stem}-*.*" biasa - glob polos itu false-positive kalau ada konten lain
+    yang judulnya kebetulan numpuk sebagai prefix. Misal stem "Sunset" bakal
+    salah kena "Sunset-Beach-1.jpg" (padahal itu punya konten LAIN yang
+    judulnya "Sunset-Beach"), karena "Beach-1.jpg" tetap cocok pola glob
+    "*.*" longgar. Dengan regex `-\\d+\\.` di akhir, "Sunset-Beach-1.jpg"
+    tidak match untuk stem "Sunset" (karena setelah "Sunset-" karakternya
+    "B", bukan digit), tapi tetap match buat stem "Sunset-Beach" itu sendiri.
+    """
+    pattern = re.compile(rf"^{re.escape(dest.stem)}-\d+\.[^.]+$")
+    return sorted(p for p in dest.parent.glob(f"{dest.stem}-*.*") if p.is_file() and pattern.match(p.name))
+
+
 def resolve_duplicate(path: Path, multi_item: bool = False) -> Path:
     """
     Kalau nama file sudah ada, tambahin suffix (1), (2), dst ke base filename.
@@ -138,15 +157,15 @@ def resolve_duplicate(path: Path, multi_item: bool = False) -> Path:
     di downloader.py). File persis "{stem}.{ext}" TIDAK PERNAH benar-benar
     dibuat untuk kasus ini, jadi mengecek exists() pada path itu sendiri
     salah - selalu balik False meski sudah pernah didownload sebelumnya.
-    Yang perlu dicek adalah apakah ADA file dengan pola "{stem}-*.*" di
-    folder tujuan. Tanpa ini, download galeri yang sama dua kali diam-diam
-    menimpa hasil download pertama, alih-alih dapat suffix (1) seperti
-    perilaku normal untuk konten single-item.
+    Yang perlu dicek adalah apakah ADA file terindeks dengan stem itu di
+    folder tujuan (lihat find_indexed_files). Tanpa ini, download galeri
+    yang sama dua kali diam-diam menimpa hasil download pertama, alih-alih
+    dapat suffix (1) seperti perilaku normal untuk konten single-item.
     """
 
     def _already_exists(p: Path) -> bool:
         if multi_item:
-            return any(p.parent.glob(f"{p.stem}-*.*"))
+            return bool(find_indexed_files(p))
         return p.exists()
 
     if not _already_exists(path):

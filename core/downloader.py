@@ -23,7 +23,7 @@ from rich.progress import (
 
 from core.detector import DetectedContent
 from core.options import DownloadChoice
-from core.utils import build_cookies_from_browser, build_filename, resolve_duplicate
+from core.utils import build_cookies_from_browser, build_filename, find_indexed_files, resolve_duplicate
 
 console = Console()
 
@@ -194,13 +194,19 @@ def _resolve_final_path(dest: Path, multi_item: bool = False) -> tuple[Path, int
 
     yt-dlp kadang ganti ekstensi (mis. setelah postprocessing), dan untuk
     multi_item outtmpl-nya punya suffix index (lihat _build_ydl_opts), jadi
-    TIDAK PERNAH ada file persis di `dest` - harus dicari lewat glob pola
-    "{stem}-*.*", bukan "{stem}.*". Kalau ini kepakai pola yang salah,
-    aplikasi bakal lapor "sukses" tapi filepath-nya gak exist dan size 0,
-    padahal file-nya beneran ada.
+    TIDAK PERNAH ada file persis di `dest` - harus dicari lewat
+    find_indexed_files(), bukan glob polos "{stem}.*". Kalau ini kepakai
+    pola yang salah, aplikasi bakal lapor "sukses" tapi filepath-nya gak
+    exist dan size 0, padahal file-nya beneran ada.
+
+    Untuk multi_item, sengaja pakai find_indexed_files() (regex-anchored ke
+    "-<angka>." di akhir nama) dan BUKAN glob "{stem}-*.*" polos, biar gak
+    salah ikut nyomot file dari konten LAIN yang judulnya kebetulan numpuk
+    sebagai prefix (mis. stem "Sunset" gak boleh kebawa "Sunset-Beach-1.jpg"
+    milik konten "Sunset-Beach" yang beda).
     """
     if multi_item:
-        matches = sorted(m for m in dest.parent.glob(f"{dest.stem}-*.*") if m.is_file())
+        matches = find_indexed_files(dest)
         if not matches:
             return dest, 0, 0
         total_size = sum(m.stat().st_size for m in matches)

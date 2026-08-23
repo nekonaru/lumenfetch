@@ -166,6 +166,60 @@ def test_resolve_duplicate_single_item_unaffected_by_multi_item_default():
 
 
 # ---------------------------------------------------------------------------
+# find_indexed_files
+# ---------------------------------------------------------------------------
+
+def test_find_indexed_files_matches_numeric_suffix(tmp_path):
+    (tmp_path / "Judul-1.jpg").touch()
+    (tmp_path / "Judul-2.jpg").touch()
+    (tmp_path / "Judul-10.jpg").touch()
+
+    result = utils.find_indexed_files(tmp_path / "Judul.jpg")
+
+    assert len(result) == 3
+
+
+def test_find_indexed_files_does_not_false_positive_on_prefix_overlap(tmp_path):
+    """
+    Regresi edge case: glob polos "{stem}-*.*" false-positive kalau ada
+    konten LAIN yang judulnya kebetulan numpuk sebagai prefix. Stem "Sunset"
+    tidak boleh ikut cocok ke "Sunset-Beach-1.jpg" (itu punya konten beda,
+    judulnya "Sunset-Beach"), karena setelah "Sunset-" karakternya "B",
+    bukan digit - regex `-\\d+\\.` di akhir yang jadi pembeda.
+    """
+    (tmp_path / "Sunset-Beach-1.jpg").touch()
+    (tmp_path / "Sunset-Beach-2.jpg").touch()
+
+    result = utils.find_indexed_files(tmp_path / "Sunset.jpg")
+
+    assert result == []  # bukan punya "Sunset", jadi harus kosong
+
+
+def test_find_indexed_files_still_matches_its_own_prefix_stem(tmp_path):
+    """Stem "Sunset-Beach" itu sendiri tetap harus match filenya sendiri."""
+    (tmp_path / "Sunset-Beach-1.jpg").touch()
+    (tmp_path / "Sunset-Beach-2.jpg").touch()
+
+    result = utils.find_indexed_files(tmp_path / "Sunset-Beach.jpg")
+
+    assert len(result) == 2
+
+
+def test_resolve_duplicate_multi_item_no_false_positive_from_other_content(tmp_path):
+    """
+    Regresi end-to-end: download galeri "Sunset-Beach" duluan, lalu download
+    galeri BARU "Sunset" (belum pernah ada) - harus dapat nama polos tanpa
+    suffix (1), karena ini memang belum pernah didownload sebelumnya.
+    """
+    (tmp_path / "Sunset-Beach-1.jpg").touch()
+    (tmp_path / "Sunset-Beach-2.jpg").touch()
+
+    result = utils.resolve_duplicate(tmp_path / "Sunset.jpg", multi_item=True)
+
+    assert result == tmp_path / "Sunset.jpg"  # bukan Sunset(1).jpg
+
+
+# ---------------------------------------------------------------------------
 # format_size / format_duration
 # ---------------------------------------------------------------------------
 
@@ -707,6 +761,22 @@ def test_resolve_final_path_multi_item_no_files_found(tmp_path):
     dest = tmp_path / "Judul.jpg"
     path, size, count = downloader._resolve_final_path(dest, multi_item=True)
     assert count == 0
+    assert size == 0
+
+
+def test_resolve_final_path_multi_item_no_false_positive_from_other_content(tmp_path):
+    """
+    Regresi edge case: file punya konten LAIN yang judulnya numpuk sebagai
+    prefix (mis. "Sunset-Beach-1.jpg" milik konten "Sunset-Beach") tidak
+    boleh ikut kehitung sebagai hasil download konten "Sunset" yang beda.
+    """
+    dest = tmp_path / "Sunset.jpg"
+    (tmp_path / "Sunset-Beach-1.jpg").write_bytes(b"punya-konten-lain")
+    (tmp_path / "Sunset-Beach-2.jpg").write_bytes(b"punya-konten-lain-juga")
+
+    path, size, count = downloader._resolve_final_path(dest, multi_item=True)
+
+    assert count == 0  # "Sunset" sendiri belum ada file-nya
     assert size == 0
 
 
