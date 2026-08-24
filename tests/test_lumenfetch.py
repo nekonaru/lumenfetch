@@ -283,8 +283,22 @@ def test_load_config_creates_default_if_missing(tmp_path, monkeypatch):
     config = utils.load_config()
 
     assert config_path.exists()
-    assert config["download_folder"] == "downloads/"
+    assert config["download_folder"] == utils.get_default_download_folder()
     assert config["max_retry"] == 3
+
+
+def test_get_default_download_folder_is_os_downloads_folder():
+    """
+    Regresi: default lama "downloads/" itu folder relatif di dalam project
+    (bukan folder Downloads asli sistem operasi), beda dari kebiasaan
+    browser lain (Chrome/Firefox/Edge) yang defaultnya selalu ke folder
+    Downloads user. Default sekarang harus folder Downloads asli, ABSOLUTE
+    path, bukan folder relatif "downloads/" lagi.
+    """
+    result = utils.get_default_download_folder()
+    assert result == str(Path.home() / "Downloads")
+    assert Path(result).is_absolute()
+    assert result != "downloads/"
 
 
 def test_load_config_merges_missing_fields(tmp_path, monkeypatch):
@@ -1082,3 +1096,40 @@ def test_try_clipboard_url_reasks_when_content_changes(monkeypatch):
     url, last = main.try_clipboard_url({"auto_paste": True}, last_prompted="https://youtube.com/watch?v=abc")
 
     assert url == "https://youtube.com/watch?v=xyz"
+
+
+# ---------------------------------------------------------------------------
+# main.handle_settings - ganti folder download
+# ---------------------------------------------------------------------------
+
+def test_handle_settings_expands_tilde_in_folder_path(monkeypatch, tmp_path):
+    """
+    User ketik path pakai "~" (mis. "~/Documents/MyDownloads") berharap itu
+    ke-resolve ke home folder-nya, bukan diperlakukan sebagai nama folder
+    relatif literal bernama "~" di dalam folder project.
+    """
+    menu_choices = iter(["1", "7"])
+    monkeypatch.setattr(main.options, "show_settings_menu", lambda config: next(menu_choices))
+    monkeypatch.setattr(main.Prompt, "ask", lambda *a, **k: "~/Documents/MyDownloads")
+    monkeypatch.setattr(main.utils, "save_config", lambda config: None)
+
+    config = utils.get_default_config()
+    result = main.handle_settings(config)
+
+    assert result["download_folder"] == str(Path.home() / "Documents" / "MyDownloads")
+    assert "~" not in result["download_folder"]
+
+
+def test_handle_settings_accepts_absolute_path_unchanged(monkeypatch, tmp_path):
+    menu_choices = iter(["1", "7"])
+    monkeypatch.setattr(main.options, "show_settings_menu", lambda config: next(menu_choices))
+    monkeypatch.setattr(main.Prompt, "ask", lambda *a, **k: str(tmp_path / "CustomFolder"))
+    monkeypatch.setattr(main.utils, "save_config", lambda config: None)
+
+    config = utils.get_default_config()
+    result = main.handle_settings(config)
+
+    assert result["download_folder"] == str(tmp_path / "CustomFolder")
+
+
+

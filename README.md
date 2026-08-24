@@ -31,7 +31,7 @@
 | 📊 **Progress bar real-time** | Kecepatan, ukuran, dan estimasi waktu tersisa lewat `rich` |
 | 🔄 **Auto-retry** | Error koneksi dicoba ulang otomatis (default 3x), error fatal (private/invalid) langsung dilaporkan |
 | 🗂 **Riwayat download** | 20 entri terakhir tersimpan, bisa dilihat kapan saja lewat command `history` |
-| ⚙️ **Pengaturan persisten** | Folder default, max retry, auto-paste, dan naming template diingat lewat `config.json` |
+| ⚙️ **Pengaturan persisten** | Folder download (default: folder Downloads OS, ganti kapan saja), max retry, auto-paste, dan naming template diingat lewat `config.json` |
 | 🍪 **Cookies dari browser** | Opsional, buat konten yang minta login (misal Instagram) - ambil cookies dari Chrome/Firefox/Edge/dll |
 | 🧼 **Nama file aman** | Karakter ilegal disanitasi, duplikat otomatis dikasih suffix `(1)`, `(2)`, dst - termasuk untuk galeri/carousel multi-gambar |
 | 🔔 **Auto-check update yt-dlp** | Tiap dibuka, dicek ke PyPI apakah ada versi yt-dlp lebih baru - gagal cek (mis. offline) diam-diam diabaikan |
@@ -197,7 +197,13 @@ Instagram_Post-by-username_2026.jpg
 
 Preferensi kamu (folder simpan, max retry, auto-paste, naming template, cookies browser, dan riwayat) otomatis tersimpan di `config.json` - dibuat otomatis dengan nilai default saat pertama kali dijalankan, jadi nggak perlu disentuh manual kecuali mau kustomisasi lewat command `settings`.
 
-> **Catatan:** `config.json` dan folder `downloads/` default itu lokasinya **relatif terhadap folder tempat kamu menjalankan `python main.py`**, bukan relatif terhadap lokasi file `main.py` itu sendiri. Kalau kamu jalanin Lumenfetch dari folder yang beda-beda, config dan hasil download bisa "tercecer" di tempat berbeda. Disarankan selalu `cd` ke folder project dulu sebelum `python main.py`.
+**Folder download default** otomatis mengikuti folder **Downloads** asli sistem operasi kamu (`~/Downloads` di macOS/Linux, `C:\Users\<nama-kamu>\Downloads` di Windows) - persis seperti kebiasaan browser lain (Chrome, Firefox, Edge, dll), bukan folder relatif di dalam project. Mau ganti ke folder lain? Tinggal:
+
+1. Ketik `settings` di prompt utama
+2. Pilih `[1] Ganti folder download default`
+3. Ketik path folder yang diinginkan (boleh pakai `~` buat home folder, mis. `~/Documents/Video`, atau path absolut penuh)
+
+> **Catatan:** `config.json` sendiri lokasinya **relatif terhadap folder tempat kamu menjalankan `python main.py`** (bukan folder download-nya, itu udah absolute path secara default). Kalau kamu jalanin Lumenfetch dari folder yang beda-beda, `config.json`-nya bisa "tercecer" di tempat berbeda. Disarankan selalu `cd` ke folder project dulu sebelum `python main.py`.
 
 ## ⚠️ Troubleshooting
 
@@ -232,7 +238,7 @@ lumenfetch/
 ├── .github/
 │   └── workflows/
 │       └── tests.yml          # CI: test & lint otomatis
-├── downloads/                 # Folder output default
+├── downloads/                 # Folder placeholder (bukan lokasi download aktual - lihat "Naming & Konfigurasi")
 ├── config.json                # Preferensi user (auto-generate, tidak di-commit)
 ├── requirements.txt
 ├── requirements-dev.txt       # Dependency tambahan untuk development (pytest, ruff)

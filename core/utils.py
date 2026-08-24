@@ -15,9 +15,21 @@ from pathlib import Path
 
 CONFIG_PATH = Path("config.json")
 
+
+def get_default_download_folder() -> str:
+    """
+    Folder download default: folder "Downloads" asli sistem operasi user
+    (sama seperti browser lain - Chrome, Firefox, Edge, dll - defaultnya
+    selalu ke situ), BUKAN folder relatif "downloads/" di dalam folder
+    project. User tetap bisa ganti ke folder lain kapan saja lewat command
+    settings > [1] Ganti folder download default.
+    """
+    return str(Path.home() / "Downloads")
+
+
 DEFAULT_CONFIG = {
     "version": 1,
-    "download_folder": "downloads/",
+    "download_folder": get_default_download_folder(),
     "auto_paste": True,
     "naming_template": "%(platform)s_%(title)s_%(year)s",
     "max_retry": 3,

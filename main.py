@@ -57,7 +57,10 @@ def handle_settings(config: dict) -> dict:
         choice = options.show_settings_menu(config)
         if choice == "1":
             new_folder = Prompt.ask("Folder download baru", default=config["download_folder"])
-            config["download_folder"] = new_folder
+            # expanduser() biar "~/Documents/MyDownloads" beneran ke-resolve
+            # ke home folder user, bukan diperlakukan sebagai nama folder
+            # relatif literal bernama "~"
+            config["download_folder"] = str(Path(new_folder).expanduser())
             utils.save_config(config)
         elif choice == "2":
             raw = Prompt.ask("Max retry baru", default=str(config["max_retry"]))
@@ -102,7 +105,7 @@ def process_url(url: str, config: dict) -> None:
     options.show_content_panel(content)
     choice = options.resolve_choice(content)
 
-    output_folder = Path(config["download_folder"])
+    output_folder = Path(config["download_folder"]).expanduser()
     filename_preview = utils.build_filename(content.platform, content.title, choice.fmt, config["naming_template"])
 
     if not options.confirm_filename(filename_preview):
