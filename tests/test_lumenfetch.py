@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 import main
-from core import downloader, instagram_fallback, update_checker, utils
+from core import downloader, instagram_fallback, options, update_checker, utils
 from core.detector import is_valid_url
 from core.options import DownloadChoice
 
@@ -769,6 +769,129 @@ def test_download_image_skips_conversion_when_format_already_matches(tmp_path, m
 # ---------------------------------------------------------------------------
 # downloader._build_ydl_opts
 # ---------------------------------------------------------------------------
+
+def test_video_thumbnail_does_not_download_full_video(tmp_path):
+    """
+    Regresi bug: menu VIDEO -> [3] Gambar (thumbnail) dulu diproses lewat
+    jalur output_kind="image" yang sama persis dengan gallery gambar asli
+    (format="best", skip_download=False) - ini bikin yt-dlp download VIDEO
+    UTUH kualitas terbaik, bukan cuma ambil thumbnail resminya. Dengan
+    is_video_thumbnail=True, harus pakai skip_download+writethumbnail dan
+    TIDAK mencantumkan "format" sama sekali.
+    """
+    choice = DownloadChoice(output_kind="image", fmt="jpg", is_video_thumbnail=True)
+    opts = downloader._build_ydl_opts(choice, tmp_path / "thumb.jpg")
+
+    assert opts["skip_download"] is True
+    assert opts["writethumbnail"] is True
+    assert "format" not in opts
+
+
+def test_regular_image_download_unaffected_by_thumbnail_flag(tmp_path):
+    """Behavior gallery/carousel gambar asli (bukan thumbnail video) tidak boleh berubah."""
+    choice = DownloadChoice(output_kind="image", fmt="jpg", is_video_thumbnail=False)
+    opts = downloader._build_ydl_opts(choice, tmp_path / "foto.jpg")
+
+    assert opts["format"] == "best"
+    assert opts["skip_download"] is False
+    assert "writethumbnail" not in opts
+
+
+def test_resolve_choice_sets_is_video_thumbnail_flag(monkeypatch):
+    """Test integrasi: alur menu VIDEO -> [3] harus benar-benar set is_video_thumbnail=True."""
+    from core.detector import DetectedContent
+
+    content = DetectedContent(
+        url="https://youtube.com/watch?v=abc",
+        platform="YouTube",
+        title="Judul Video",
+        content_type="VIDEO",
+        duration=120,
+        entries=[],
+        raw_info={},
+    )
+
+    responses = iter(["3", "1"])  # [3] Gambar (thumbnail), lalu format JPG
+    monkeypatch.setattr(options.Prompt, "ask", lambda *a, **k: next(responses))
+
+    choice = options.resolve_choice(content)
+
+    assert choice.output_kind == "image"
+    assert choice.is_video_thumbnail is True
+
+
+def test_ask_image_choice_default_not_video_thumbnail():
+    """Konten IMAGE asli (bukan dari menu video) harus tetap is_video_thumbnail=False."""
+    from core.detector import DetectedContent
+
+    content = DetectedContent(
+        url="https://pinterest.com/pin/1",
+        platform="Pinterest",
+        title="Gambar",
+        content_type="IMAGE",
+        duration=None,
+        entries=[],
+        raw_info={},
+    )
+
+    import unittest.mock as mock
+
+    with mock.patch.object(options.Prompt, "ask", return_value="1"):
+        choice = options.ask_image_choice(content)
+
+    assert choice.is_video_thumbnail is False
+
+
+def test_ask_image_choice_filters_out_of_range_indices():
+    """
+    Regresi minor: nomor gambar yang di luar jangkauan entries (mis. ketik
+    "99" padahal cuma ada 5 gambar) dulu tetap lolos ke selected_indices
+    tanpa validasi, ujung-ujungnya bikin "0 gambar terdownload" tanpa
+    penjelasan. Sekarang di-filter dan fallback ke download semua kalau
+    semua nomor yang diketik ternyata invalid - konsisten sama behavior
+    instagram_fallback.py yang sudah punya bounds-check serupa.
+    """
+    from core.detector import DetectedContent
+
+    content = DetectedContent(
+        url="https://reddit.com/gallery/xyz",
+        platform="Reddit",
+        title="Galeri",
+        content_type="IMAGE",
+        duration=None,
+        entries=[{"url": "a"}, {"url": "b"}, {"url": "c"}, {"url": "d"}, {"url": "e"}],
+        raw_info={},
+    )
+
+    import unittest.mock as mock
+
+    with mock.patch.object(options.Prompt, "ask", side_effect=["1", "2", "99,100"]):
+        choice = options.ask_image_choice(content)
+
+    assert choice.selected_indices is None  # fallback ke download semua
+
+
+def test_ask_image_choice_keeps_only_valid_indices():
+    """Nomor yang valid tetap dipakai, yang di luar jangkauan didrop (bukan bikin semua batal)."""
+    from core.detector import DetectedContent
+
+    content = DetectedContent(
+        url="https://reddit.com/gallery/xyz",
+        platform="Reddit",
+        title="Galeri",
+        content_type="IMAGE",
+        duration=None,
+        entries=[{"url": "a"}, {"url": "b"}, {"url": "c"}],
+        raw_info={},
+    )
+
+    import unittest.mock as mock
+
+    with mock.patch.object(options.Prompt, "ask", side_effect=["1", "2", "1,99,2"]):
+        choice = options.ask_image_choice(content)
+
+    assert choice.selected_indices == [0, 1]  # nomor 1 dan 2 valid, "99" didrop
+
 
 def test_embed_thumbnail_skipped_for_webm(tmp_path):
     """

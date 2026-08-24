@@ -32,6 +32,7 @@ class DownloadChoice:
     quality: str = "Best"
     fmt: str = ""
     selected_indices: list[int] | None = None  # untuk carousel
+    is_video_thumbnail: bool = False  # True kalau ini "Gambar (thumbnail)" dari menu VIDEO
 
 
 def show_header(version: str = "1.0.0") -> None:
@@ -109,9 +110,9 @@ def ask_audio_choice() -> DownloadChoice:
     return DownloadChoice(output_kind="audio", quality=quality, fmt=fmt.lower())
 
 
-def ask_image_choice(content: DetectedContent) -> DownloadChoice:
+def ask_image_choice(content: DetectedContent, is_video_thumbnail: bool = False) -> DownloadChoice:
     fmt = _select_from_list("Pilih Format:", IMAGE_FORMATS, default_index=0)
-    choice = DownloadChoice(output_kind="image", fmt=fmt.lower())
+    choice = DownloadChoice(output_kind="image", fmt=fmt.lower(), is_video_thumbnail=is_video_thumbnail)
 
     if content.entries and len(content.entries) > 1:
         console.print("\nPilih gambar:")
@@ -125,9 +126,25 @@ def ask_image_choice(content: DetectedContent) -> DownloadChoice:
                 choice.selected_indices = None  # kosong / enter doang -> download semua
             else:
                 try:
-                    choice.selected_indices = [int(n.strip()) - 1 for n in nums.split(",") if n.strip()]
+                    parsed = [int(n.strip()) - 1 for n in nums.split(",") if n.strip()]
                 except ValueError:
+                    parsed = None
+
+                if parsed is None:
                     choice.selected_indices = None
+                else:
+                    # Nomor yang di luar jangkauan (mis. entries cuma 5 tapi
+                    # user ketik "99") disaring dulu, biar gak diam-diam
+                    # jadi "0 gambar terdownload" - konsisten sama fallback
+                    # yang sudah ada di instagram_fallback.py.
+                    valid = [i for i in parsed if 0 <= i < len(content.entries)]
+                    if not valid:
+                        console.print(
+                            "[yellow]Nomor yang dimasukkan tidak valid - download semua gambar sebagai gantinya.[/yellow]"
+                        )
+                        choice.selected_indices = None
+                    else:
+                        choice.selected_indices = valid
     return choice
 
 
@@ -139,7 +156,7 @@ def resolve_choice(content: DetectedContent) -> DownloadChoice:
             return ask_video_choice()
         if kind == "audio":
             return ask_audio_choice()
-        return ask_image_choice(content)
+        return ask_image_choice(content, is_video_thumbnail=True)
 
     if content.content_type == "AUDIO":
         return ask_audio_choice()

@@ -321,8 +321,21 @@ def _build_ydl_opts(
         ]
 
     elif choice.output_kind == "image":
-        opts["format"] = "best"
-        opts["skip_download"] = False
+        if choice.is_video_thumbnail:
+            # Ini "Gambar (thumbnail)" dari menu VIDEO - user cuma minta
+            # thumbnail resmi dari platform, BUKAN video utuh. format="best"
+            # di sini bakal salah pilih stream video kualitas terbaik dan
+            # download-nya PENUH, cuma buat nanti "diconvert" jadi gambar
+            # (hasilnya paling cuma frame pertama, boros bandwidth & waktu,
+            # dan itu bukan thumbnail resmi platform sama sekali). Yang
+            # bener: skip_download + writethumbnail, TANPA set "format" -
+            # yt-dlp tinggal ambil file thumbnail-nya langsung.
+            opts["skip_download"] = True
+            opts["writethumbnail"] = True
+        else:
+            opts["format"] = "best"
+            opts["skip_download"] = False
+
         if multi_item and choice.selected_indices:
             # selected_indices dari options.py 0-indexed (buat indexing Python list),
             # tapi playlist_items yt-dlp butuh 1-indexed dipisah koma. Tanpa ini,
