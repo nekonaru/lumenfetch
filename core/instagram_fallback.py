@@ -136,6 +136,12 @@ def download_photos(
             final_path = convert_image(dest, target_ext)
             results.append(final_path)
         except Exception:  # noqa: BLE001
+            # urlretrieve() yang gagal di tengah transfer (bukan gagal total
+            # dari awal) bisa saja sudah sempat nulis `dest` sebagian/korup
+            # ke disk. Kalau tidak dibersihkan, file sampah 0-byte/korup ini
+            # nyangkut di folder output dengan nama yang KELIHATAN sah -
+            # bisa membingungkan kalau user buka foldernya manual.
+            dest.unlink(missing_ok=True)
             failed_count += 1
 
         if on_progress:

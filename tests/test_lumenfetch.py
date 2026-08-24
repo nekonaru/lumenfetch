@@ -543,6 +543,40 @@ def test_download_photos_all_fail(tmp_path, monkeypatch):
     assert result.failed_count == 2
 
 
+def test_download_photos_cleans_up_partial_file_on_failure(tmp_path, monkeypatch):
+    """
+    Regresi: urlretrieve() yang gagal DI TENGAH transfer (bukan gagal total
+    dari awal) bisa saja sudah sempat menulis sebagian data ke `dest` sebelum
+    error-nya muncul. Kalau file sisa ini tidak dibersihkan, dia nyangkut di
+    folder output dengan nama yang KELIHATAN sah (padahal isinya 0-byte atau
+    korup) - berpotensi membingungkan kalau user buka foldernya manual.
+    """
+
+    def fake_urlretrieve(url, dest):
+        # Simulasikan urlretrieve yang sempat nulis sebagian data ke disk
+        # SEBELUM raise (persis skenario koneksi putus di tengah transfer).
+        Path(dest).write_bytes(b"data-parsial-yang-korup")
+        raise TimeoutError("koneksi putus di tengah transfer")
+
+    monkeypatch.setattr(instagram_fallback.urllib.request, "urlretrieve", fake_urlretrieve)
+
+    class FakeContent:
+        platform = "Instagram"
+        title = "Galeri"
+        entries = [{"url": "https://x/1.jpg"}]
+
+    instagram_fallback.download_photos(
+        FakeContent(),
+        selected_indices=None,
+        target_ext="jpg",
+        output_folder=tmp_path,
+        naming_template="%(platform)s_%(title)s_%(year)s",
+    )
+
+    leftover_files = list(tmp_path.glob("*"))
+    assert leftover_files == [], f"file sisa masih ada, tidak dibersihkan: {leftover_files}"
+
+
 # ---------------------------------------------------------------------------
 # update_checker
 # ---------------------------------------------------------------------------
