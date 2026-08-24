@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 import urllib.request
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
@@ -83,6 +84,17 @@ def detect_photo(url: str):
     )
 
 
+@dataclass
+class PhotoDownloadResult:
+    paths: list[Path] = field(default_factory=list)
+    failed_count: int = 0
+    total_count: int = 0
+
+    @property
+    def success_count(self) -> int:
+        return len(self.paths)
+
+
 def download_photos(
     content,
     selected_indices: list[int] | None,
@@ -90,8 +102,17 @@ def download_photos(
     output_folder: Path,
     naming_template: str,
     on_progress: Callable[[int, int], None] | None = None,
-) -> list[Path]:
-    """Download semua/foto tertentu dari carousel/single-photo Instagram."""
+) -> PhotoDownloadResult:
+    """
+    Download semua/foto tertentu dari carousel/single-photo Instagram.
+
+    Tiap foto diunduh SECARA INDEPENDEN - kalau satu foto gagal (mis. koneksi
+    putus di tengah carousel 5 foto), foto-foto lain tetap dilanjutkan, bukan
+    membatalkan semuanya (dulu: satu error langsung raise dan foto yang
+    sudah sempat kedownload sebelumnya jadi "yatim" - tersimpan di disk tapi
+    tidak pernah dilaporkan ke user karena fungsinya keburu crash). Hasilnya
+    melaporkan dengan akurat berapa yang sukses dan berapa yang gagal.
+    """
     output_folder.mkdir(parents=True, exist_ok=True)
 
     entries = content.entries
@@ -102,6 +123,7 @@ def download_photos(
         entries = content.entries  # index tidak valid semua -> fallback ke semua
 
     results: list[Path] = []
+    failed_count = 0
     total = len(entries)
 
     for idx, entry in enumerate(entries, start=1):
@@ -109,11 +131,14 @@ def download_photos(
         filename = build_filename(content.platform, title, "jpg", naming_template)
         dest = resolve_duplicate(output_folder / filename)
 
-        urllib.request.urlretrieve(entry["url"], dest)  # noqa: S310 - URL dari instaloader (CDN Instagram resmi)
-        final_path = convert_image(dest, target_ext)
-        results.append(final_path)
+        try:
+            urllib.request.urlretrieve(entry["url"], dest)  # noqa: S310 - URL dari instaloader (CDN Instagram resmi)
+            final_path = convert_image(dest, target_ext)
+            results.append(final_path)
+        except Exception:  # noqa: BLE001
+            failed_count += 1
 
         if on_progress:
             on_progress(idx, total)
 
-    return results
+    return PhotoDownloadResult(paths=results, failed_count=failed_count, total_count=total)

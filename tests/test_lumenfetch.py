@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import main
 from core import downloader, instagram_fallback, update_checker, utils
 from core.detector import is_valid_url
 from core.options import DownloadChoice
@@ -448,7 +449,7 @@ def test_download_photos_respects_selected_indices(tmp_path, monkeypatch):
         title = "Judul Post"
         entries = [{"url": "https://x/1.jpg"}, {"url": "https://x/2.jpg"}, {"url": "https://x/3.jpg"}]
 
-    results = instagram_fallback.download_photos(
+    result = instagram_fallback.download_photos(
         FakeContent(),
         selected_indices=[0, 2],
         target_ext="jpg",
@@ -456,7 +457,8 @@ def test_download_photos_respects_selected_indices(tmp_path, monkeypatch):
         naming_template="%(platform)s_%(title)s_%(year)s",
     )
 
-    assert len(results) == 2
+    assert result.success_count == 2
+    assert result.failed_count == 0
     assert calls == ["https://x/1.jpg", "https://x/3.jpg"]
 
 
@@ -471,7 +473,7 @@ def test_download_photos_downloads_all_when_no_selection(tmp_path, monkeypatch):
         title = "Judul Post"
         entries = [{"url": "https://x/1.jpg"}, {"url": "https://x/2.jpg"}]
 
-    results = instagram_fallback.download_photos(
+    result = instagram_fallback.download_photos(
         FakeContent(),
         selected_indices=None,
         target_ext="jpg",
@@ -479,7 +481,66 @@ def test_download_photos_downloads_all_when_no_selection(tmp_path, monkeypatch):
         naming_template="%(platform)s_%(title)s_%(year)s",
     )
 
-    assert len(results) == 2
+    assert result.success_count == 2
+    assert result.total_count == 2
+
+
+def test_download_photos_partial_failure_continues_and_reports_accurately(tmp_path, monkeypatch):
+    """
+    Regresi bug: dulu satu foto gagal (mis. koneksi putus di tengah carousel)
+    langsung raise dan membatalkan sisa foto lain yang belum dicoba, PLUS
+    foto yang sudah sempat sukses sebelumnya jadi "yatim" (tersimpan di disk
+    tapi tidak pernah dilaporkan balik ke caller karena fungsinya keburu
+    crash). Sekarang tiap foto independen: yang gagal di-skip, yang lain
+    tetap lanjut, dan hasilnya melaporkan angka sukses/gagal yang akurat.
+    """
+
+    def fake_urlretrieve(url, dest):
+        if "2.jpg" in url:
+            raise TimeoutError("koneksi putus")
+        Path(dest).write_bytes(b"fake-image-bytes")
+
+    monkeypatch.setattr(instagram_fallback.urllib.request, "urlretrieve", fake_urlretrieve)
+
+    class FakeContent:
+        platform = "Instagram"
+        title = "Galeri"
+        entries = [{"url": "https://x/1.jpg"}, {"url": "https://x/2.jpg"}, {"url": "https://x/3.jpg"}]
+
+    result = instagram_fallback.download_photos(
+        FakeContent(),
+        selected_indices=None,
+        target_ext="jpg",
+        output_folder=tmp_path,
+        naming_template="%(platform)s_%(title)s_%(year)s",
+    )
+
+    assert result.success_count == 2  # foto 1 dan 3 tetap berhasil
+    assert result.failed_count == 1  # foto 2 gagal, tapi tidak membatalkan yang lain
+    assert result.total_count == 3
+
+
+def test_download_photos_all_fail(tmp_path, monkeypatch):
+    def fake_urlretrieve(url, dest):
+        raise TimeoutError("koneksi putus total")
+
+    monkeypatch.setattr(instagram_fallback.urllib.request, "urlretrieve", fake_urlretrieve)
+
+    class FakeContent:
+        platform = "Instagram"
+        title = "Galeri"
+        entries = [{"url": "https://x/1.jpg"}, {"url": "https://x/2.jpg"}]
+
+    result = instagram_fallback.download_photos(
+        FakeContent(),
+        selected_indices=None,
+        target_ext="jpg",
+        output_folder=tmp_path,
+        naming_template="%(platform)s_%(title)s_%(year)s",
+    )
+
+    assert result.success_count == 0
+    assert result.failed_count == 2
 
 
 # ---------------------------------------------------------------------------
@@ -915,3 +976,75 @@ def test_resolve_final_path_multi_item_no_false_positive_from_other_content(tmp_
 )
 def test_is_valid_url(url, expected):
     assert is_valid_url(url) == expected
+
+
+# ---------------------------------------------------------------------------
+# main.try_clipboard_url
+# ---------------------------------------------------------------------------
+
+def test_try_clipboard_url_disabled_by_auto_paste_off(monkeypatch):
+    monkeypatch.setattr(main.pyperclip, "paste", lambda: "https://youtube.com/watch?v=abc")
+    url, last = main.try_clipboard_url({"auto_paste": False}, last_prompted=None)
+    assert url is None
+    assert last is None
+
+
+def test_try_clipboard_url_ignores_invalid_clipboard_content(monkeypatch):
+    monkeypatch.setattr(main.pyperclip, "paste", lambda: "bukan url sama sekali")
+    url, last = main.try_clipboard_url({"auto_paste": True}, last_prompted=None)
+    assert url is None
+    assert last is None
+
+
+def test_try_clipboard_url_returns_url_when_accepted(monkeypatch):
+    monkeypatch.setattr(main.pyperclip, "paste", lambda: "https://youtube.com/watch?v=abc")
+    monkeypatch.setattr(main.Prompt, "ask", lambda *a, **k: "y")
+
+    url, last = main.try_clipboard_url({"auto_paste": True}, last_prompted=None)
+
+    assert url == "https://youtube.com/watch?v=abc"
+    assert last == "https://youtube.com/watch?v=abc"
+
+
+def test_try_clipboard_url_tracks_declined_content(monkeypatch):
+    monkeypatch.setattr(main.pyperclip, "paste", lambda: "https://youtube.com/watch?v=abc")
+    monkeypatch.setattr(main.Prompt, "ask", lambda *a, **k: "n")
+
+    url, last = main.try_clipboard_url({"auto_paste": True}, last_prompted=None)
+
+    assert url is None
+    assert last == "https://youtube.com/watch?v=abc"  # tetap dicatat meski ditolak
+
+
+def test_try_clipboard_url_does_not_reask_same_content(monkeypatch):
+    """
+    Regresi UX: dulu clipboard yang isinya belum berubah ditawarkan LAGI
+    setiap loop, jadi user harus jawab 'n' berulang kali padahal isinya
+    sama persis dengan yang baru saja ditolak/sudah dipakai.
+    """
+    prompt_call_count = [0]
+
+    def fake_prompt_ask(*args, **kwargs):
+        prompt_call_count[0] += 1
+        return "n"
+
+    monkeypatch.setattr(main.pyperclip, "paste", lambda: "https://youtube.com/watch?v=abc")
+    monkeypatch.setattr(main.Prompt, "ask", fake_prompt_ask)
+
+    config = {"auto_paste": True}
+    url1, last1 = main.try_clipboard_url(config, last_prompted=None)
+    url2, last2 = main.try_clipboard_url(config, last_prompted=last1)
+
+    assert prompt_call_count[0] == 1  # cuma ditanya SEKALI, bukan dua kali
+    assert url1 is None and url2 is None
+    assert last1 == last2 == "https://youtube.com/watch?v=abc"
+
+
+def test_try_clipboard_url_reasks_when_content_changes(monkeypatch):
+    monkeypatch.setattr(main.pyperclip, "paste", lambda: "https://youtube.com/watch?v=xyz")
+    monkeypatch.setattr(main.Prompt, "ask", lambda *a, **k: "y")
+
+    # last_prompted dari URL SEBELUMNYA yang beda -> harus tetap ditanya lagi
+    url, last = main.try_clipboard_url({"auto_paste": True}, last_prompted="https://youtube.com/watch?v=abc")
+
+    assert url == "https://youtube.com/watch?v=xyz"

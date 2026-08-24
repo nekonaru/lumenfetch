@@ -23,19 +23,33 @@ console = Console()
 VERSION = "1.0.0"
 
 
-def try_clipboard_url(config: dict) -> str | None:
+def try_clipboard_url(config: dict, last_prompted: str | None) -> tuple[str | None, str | None]:
+    """
+    Return (url_yang_dipakai_atau_None, clip_terakhir_yang_sudah_ditanyakan).
+
+    Tidak menawarkan isi clipboard yang SAMA dua kali berturut-turut kalau
+    user sudah pernah ditanya soal itu sebelumnya (baik dipakai atau
+    ditolak) - tanpa ini, user harus jawab 'n' berulang kali tiap loop kalau
+    isi clipboard belum berubah dari sebelumnya.
+    """
     if not config.get("auto_paste", True):
-        return None
+        return None, last_prompted
+
     try:
         clip = pyperclip.paste().strip()
     except Exception:  # noqa: BLE001
-        return None
+        return None, last_prompted
 
-    if clip and is_valid_url(clip):
-        console.print(f"\n📋 Clipboard terdeteksi: {clip}")
-        if Prompt.ask("Gunakan URL ini? [Y/n]", default="y").lower().startswith("y"):
-            return clip
-    return None
+    if not clip or not is_valid_url(clip):
+        return None, last_prompted
+
+    if clip == last_prompted:
+        return None, last_prompted  # sudah pernah ditanyakan, jangan tanya lagi
+
+    console.print(f"\n📋 Clipboard terdeteksi: {clip}")
+    if Prompt.ask("Gunakan URL ini? [Y/n]", default="y").lower().startswith("y"):
+        return clip, clip
+    return None, clip
 
 
 def handle_settings(config: dict) -> dict:
@@ -105,21 +119,35 @@ def process_url(url: str, config: dict) -> None:
 
     try:
         if content.raw_info.get("source") == "instaloader":
-            paths = instagram_fallback.download_photos(
+            result = instagram_fallback.download_photos(
                 content,
                 choice.selected_indices,
                 choice.fmt,
                 output_folder,
                 config["naming_template"],
             )
-            total_size = sum(p.stat().st_size for p in paths if p.exists())
+            total_size = sum(p.stat().st_size for p in result.paths if p.exists())
             entry["size"] = utils.format_size(total_size)
-            entry["success"] = True
-            console.print(
-                f"\n✅ Selesai!\n"
-                f"   File  : {len(paths)} gambar tersimpan di {output_folder}\n"
-                f"   Ukuran total: {utils.format_size(total_size)}"
-            )
+            entry["success"] = result.success_count > 0
+
+            if result.failed_count == 0:
+                console.print(
+                    f"\n✅ Selesai!\n"
+                    f"   File  : {result.success_count} gambar tersimpan di {output_folder}\n"
+                    f"   Ukuran total: {utils.format_size(total_size)}"
+                )
+            elif result.success_count > 0:
+                # Partial success - dilaporkan APA ADANYA, bukan disamarkan
+                # jadi "sukses penuh" ataupun "gagal total".
+                console.print(
+                    f"\n⚠️  Selesai sebagian!\n"
+                    f"   File  : {result.success_count}/{result.total_count} gambar berhasil "
+                    f"tersimpan di {output_folder}\n"
+                    f"   Ukuran total: {utils.format_size(total_size)}\n"
+                    f"   [yellow]{result.failed_count} gambar gagal didownload[/yellow]"
+                )
+            else:
+                console.print("[red]❌ Semua gambar gagal didownload[/red]")
         else:
             result = download(
                 content,
@@ -170,8 +198,10 @@ def main() -> None:
     config = utils.load_config()
     options.show_header(VERSION)
 
+    last_clip_prompted: str | None = None
+
     while True:
-        clip_url = try_clipboard_url(config)
+        clip_url, last_clip_prompted = try_clipboard_url(config, last_clip_prompted)
 
         raw = clip_url or Prompt.ask(
             "\nMasukkan URL [dim](q: keluar, history, settings, help)[/dim]"

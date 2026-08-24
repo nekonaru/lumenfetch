@@ -27,7 +27,7 @@
 | 🎞 **Video** | Pilihan quality Best/1080p/720p/480p/360p/Worst, format MP4/WEBM/MKV, thumbnail otomatis ter-embed |
 | 🎵 **Audio** | Ekstrak ke MP3/M4A/WAV/FLAC dengan pilihan bitrate |
 | 🖼 **Gambar & carousel** | Download satu gambar, semua sekaligus, atau pilih nomor tertentu (misal post Instagram multi-foto) - foto Instagram pakai fallback `instaloader` otomatis, konversi JPG/PNG/WEBP berlaku di semua sumber gambar |
-| 📋 **Auto-paste clipboard** | Kalau ada link valid di clipboard, langsung ditawarkan tanpa perlu paste manual |
+| 📋 **Auto-paste clipboard** | Kalau ada link valid di clipboard, langsung ditawarkan tanpa perlu paste manual - tidak akan nanya ulang isi clipboard yang sama berkali-kali |
 | 📊 **Progress bar real-time** | Kecepatan, ukuran, dan estimasi waktu tersisa lewat `rich` |
 | 🔄 **Auto-retry** | Error koneksi dicoba ulang otomatis (default 3x), error fatal (private/invalid) langsung dilaporkan |
 | 🗂 **Riwayat download** | 20 entri terakhir tersimpan, bisa dilihat kapan saja lewat command `history` |
@@ -170,6 +170,7 @@ Buat nutupin celah ini, Lumenfetch otomatis "banting setir" pakai [`instaloader`
 - ✅ Reel/video Instagram → tetap lewat `yt-dlp` seperti biasa
 - ✅ Post foto tunggal atau carousel foto → otomatis lewat `instaloader`, muncul opsi format (JPG/PNG/WEBP) dan pilih semua/tertentu seperti biasa
 - ⚠️ Post private yang kamu belum follow, atau butuh login → tetap gagal walau fallback aktif (baik `yt-dlp` maupun `instaloader` sama-sama butuh sesi login buat itu; coba fitur **Cookies dari Browser** di atas)
+- 🔄 Carousel dengan banyak foto: tiap foto didownload independen. Kalau ada 1-2 foto yang gagal (mis. koneksi putus), yang lain tetap lanjut dan hasilnya dilaporkan apa adanya (mis. "3/5 gambar berhasil"), bukan dianggap gagal total ataupun disamarkan jadi sukses penuh
 
 ## 🔔 Auto-check Update yt-dlp
 
