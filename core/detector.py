@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import yt_dlp
 
@@ -66,10 +67,47 @@ def _looks_like_image(entry: dict) -> bool:
     return ext in {"jpg", "jpeg", "png", "webp"} or entry.get("vcodec") == "none" and not entry.get("duration")
 
 
+def strip_playlist_context(url: str) -> str:
+    """
+    Buang parameter "list" (dan "index") dari URL kalau URL itu jelas
+    menunjuk ke SATU video spesifik (ada parameter identitas video kayak
+    "v=" di YouTube, atau path /shorts/, /embed/), bukan link playlist murni.
+
+    Kenapa ini perlu: link video biasa yang dicopy pas lagi nonton di dalam
+    playlist YouTube otomatis kebawa "&list=...". detect() sengaja pakai
+    "noplaylist": False (biar galeri multi-gambar - Pinterest board, Reddit
+    gallery, tweet multi-foto - bisa kedeteksi lengkap semua entry-nya).
+    Tanpa strip ini, video biasa yang kebawa "list=" bakal salah kena narik
+    METADATA PLAYLIST-nya (bukan video itu sendiri) - judul hasil deteksi
+    jadi salah (nama playlist, bukan judul video), prosesnya jauh lebih
+    lambat/berat (yt-dlp narik semua entry playlist walau skip_download),
+    dan lebih rawan kena rate-limit (429) dari YouTube.
+
+    Galeri multi-gambar TIDAK terpengaruh sama sekali oleh fungsi ini,
+    karena mereka tidak pernah punya parameter "list" di URL-nya.
+    """
+    parts = urlsplit(url)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+
+    if "list" not in query:
+        return url
+
+    has_specific_video = "v" in query or "/shorts/" in parts.path or "/embed/" in parts.path
+    if not has_specific_video:
+        return url  # kemungkinan besar ini memang link playlist murni, biarkan apa adanya
+
+    query.pop("list", None)
+    query.pop("index", None)
+    new_query = urlencode(query)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, new_query, parts.fragment))
+
+
 def detect(url: str, cookies_browser: str | None = None) -> DetectedContent:
     """Ekstrak info konten dari URL tanpa mendownload."""
     if not is_valid_url(url):
         raise DetectionError("URL tidak valid atau tidak didukung")
+
+    url = strip_playlist_context(url)
 
     ydl_opts = {
         "quiet": True,
