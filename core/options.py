@@ -15,7 +15,7 @@ from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
 from core.detector import DetectedContent
-from core.utils import format_duration
+from core.utils import estimate_audio_size_bytes, estimate_video_size_bytes, format_duration, format_eta, format_size
 
 console = Console()
 
@@ -72,10 +72,19 @@ def show_content_panel(content: DetectedContent) -> None:
     console.print(Panel("\n".join(lines), title="✅ Konten Terdeteksi", border_style="green"))
 
 
-def _select_from_list(prompt_text: str, choices: list[str], default_index: int = 0) -> str:
-    table_lines = [f"  [{i + 1}] {c}" + ("  (default)" if i == default_index else "") for i, c in enumerate(choices)]
+def _select_from_list(
+    prompt_text: str,
+    choices: list[str],
+    default_index: int = 0,
+    extra: list[str] | None = None,
+) -> str:
     console.print(f"\n{prompt_text}")
-    for line in table_lines:
+    for i, c in enumerate(choices):
+        line = f"  [{i + 1}] {c}"
+        if i == default_index:
+            line += "  (default)"
+        if extra and extra[i]:
+            line += f"  [dim]{extra[i]}[/dim]"
         console.print(line)
 
     raw = Prompt.ask("→", default=str(default_index + 1))
@@ -98,15 +107,50 @@ def ask_output_type_for_video() -> str:
     return mapping.get(raw.strip(), "video")
 
 
-def ask_video_choice() -> DownloadChoice:
-    quality = _select_from_list("Pilih Quality:", VIDEO_QUALITIES, default_index=0)
+def _build_size_labels(
+    formats: list[dict],
+    qualities: list[str],
+    duration: float | None,
+    avg_speed_bps: float | None,
+    estimator,
+) -> list[str]:
+    """
+    Bikin label "(~85 MB, ~14 detik)" per opsi quality. Kalau ukurannya gak
+    bisa diestimasi (platform gak expose filesize/bitrate), labelnya kosong
+    aja - lebih baik gak nampilin apa-apa daripada nampilin angka ngasal.
+    """
+    labels = []
+    for quality in qualities:
+        size_bytes = estimator(formats, quality, duration)
+        if size_bytes is None:
+            labels.append("")
+            continue
+        size_text = f"~{format_size(size_bytes)}"
+        eta_text = format_eta(size_bytes, avg_speed_bps)
+        labels.append(f"({size_text}, {eta_text})" if eta_text else f"({size_text})")
+    return labels
+
+
+def ask_video_choice(content: DetectedContent | None = None, avg_speed_bps: float | None = None) -> DownloadChoice:
+    extra = None
+    if content is not None:
+        formats = content.raw_info.get("formats") or []
+        extra = _build_size_labels(formats, VIDEO_QUALITIES, content.duration, avg_speed_bps, estimate_video_size_bytes)
+
+    quality = _select_from_list("Pilih Quality:", VIDEO_QUALITIES, default_index=0, extra=extra)
     fmt = _select_from_list("Pilih Format:", VIDEO_FORMATS, default_index=0)
     return DownloadChoice(output_kind="video", quality=quality, fmt=fmt.lower())
 
 
-def ask_audio_choice() -> DownloadChoice:
+def ask_audio_choice(content: DetectedContent | None = None, avg_speed_bps: float | None = None) -> DownloadChoice:
     fmt = _select_from_list("Pilih Format:", AUDIO_FORMATS, default_index=0)
-    quality = _select_from_list("Pilih Quality:", AUDIO_QUALITIES, default_index=0)
+
+    extra = None
+    if content is not None:
+        formats = content.raw_info.get("formats") or []
+        extra = _build_size_labels(formats, AUDIO_QUALITIES, content.duration, avg_speed_bps, estimate_audio_size_bytes)
+
+    quality = _select_from_list("Pilih Quality:", AUDIO_QUALITIES, default_index=0, extra=extra)
     return DownloadChoice(output_kind="audio", quality=quality, fmt=fmt.lower())
 
 
@@ -148,18 +192,18 @@ def ask_image_choice(content: DetectedContent, is_video_thumbnail: bool = False)
     return choice
 
 
-def resolve_choice(content: DetectedContent) -> DownloadChoice:
+def resolve_choice(content: DetectedContent, avg_speed_bps: float | None = None) -> DownloadChoice:
     """Alur pilihan dinamis sesuai tipe konten terdeteksi."""
     if content.content_type == "VIDEO":
         kind = ask_output_type_for_video()
         if kind == "video":
-            return ask_video_choice()
+            return ask_video_choice(content, avg_speed_bps)
         if kind == "audio":
-            return ask_audio_choice()
+            return ask_audio_choice(content, avg_speed_bps)
         return ask_image_choice(content, is_video_thumbnail=True)
 
     if content.content_type == "AUDIO":
-        return ask_audio_choice()
+        return ask_audio_choice(content, avg_speed_bps)
 
     return ask_image_choice(content)
 

@@ -273,6 +273,133 @@ def test_format_duration(seconds, expected):
 
 
 # ---------------------------------------------------------------------------
+# estimate_video_size_bytes / estimate_audio_size_bytes
+# ---------------------------------------------------------------------------
+
+SAMPLE_VIDEO_FORMATS = [
+    {"vcodec": "avc1", "acodec": "none", "height": 1080, "ext": "mp4", "filesize": 150_000_000, "tbr": 4500},
+    {"vcodec": "avc1", "acodec": "none", "height": 720, "ext": "mp4", "filesize": 80_000_000, "tbr": 2400},
+    {"vcodec": "avc1", "acodec": "none", "height": 480, "ext": "mp4", "filesize": 40_000_000, "tbr": 1200},
+    {"vcodec": "none", "acodec": "mp4a", "ext": "m4a", "filesize": 5_000_000, "abr": 128},
+]
+
+
+def test_estimate_video_size_best_picks_highest_resolution():
+    size = utils.estimate_video_size_bytes(SAMPLE_VIDEO_FORMATS, "Best", duration=300)
+    assert size == 150_000_000 + 5_000_000  # video 1080p + audio
+
+
+def test_estimate_video_size_specific_tier():
+    size = utils.estimate_video_size_bytes(SAMPLE_VIDEO_FORMATS, "720p", duration=300)
+    assert size == 80_000_000 + 5_000_000
+
+
+def test_estimate_video_size_worst_picks_lowest_resolution():
+    size = utils.estimate_video_size_bytes(SAMPLE_VIDEO_FORMATS, "Worst", duration=300)
+    assert size == 40_000_000 + 5_000_000  # 480p (paling rendah di sample) + audio
+
+
+def test_estimate_video_size_returns_none_when_tier_unavailable():
+    """
+    Kalau tier yang diminta (mis. 360p) gak ada di daftar format konten ini,
+    HARUS None - bukan fallback nebak pakai ukuran tier lain (itu bakal
+    nampilin angka yang menyesatkan, mis. "360p" tapi ukurannya sama gede
+    kayak "Best"/1080p).
+    """
+    size = utils.estimate_video_size_bytes(SAMPLE_VIDEO_FORMATS, "360p", duration=300)
+    assert size is None
+
+
+def test_estimate_video_size_returns_none_without_duration():
+    size = utils.estimate_video_size_bytes(SAMPLE_VIDEO_FORMATS, "Best", duration=None)
+    assert size is None
+
+
+def test_estimate_video_size_returns_none_without_formats():
+    size = utils.estimate_video_size_bytes([], "Best", duration=300)
+    assert size is None
+
+
+def test_estimate_video_size_falls_back_to_bitrate_when_no_filesize():
+    formats = [
+        {"vcodec": "avc1", "acodec": "none", "height": 720, "tbr": 2000, "filesize": None, "filesize_approx": None},
+    ]
+    size = utils.estimate_video_size_bytes(formats, "720p", duration=100)
+    assert size == int(2000 * 1000 / 8 * 100)  # tbr(kbit/s) -> bytes
+
+
+def test_estimate_audio_size_fixed_bitrate_uses_target_kbps():
+    """Bitrate tetap (320/192/128) dihitung dari TARGET output, bukan sumbernya - lebih akurat setelah ffmpeg convert."""
+    size = utils.estimate_audio_size_bytes([], "320kbps", duration=200)
+    assert size == int(320 * 1000 / 8 * 200)
+
+
+def test_estimate_audio_size_best_uses_source_format():
+    formats = [{"acodec": "mp4a", "abr": 160, "filesize": 3_000_000}]
+    size = utils.estimate_audio_size_bytes(formats, "Best", duration=150)
+    assert size == 3_000_000
+
+
+def test_estimate_audio_size_returns_none_without_duration():
+    assert utils.estimate_audio_size_bytes(SAMPLE_VIDEO_FORMATS, "320kbps", duration=None) is None
+
+
+# ---------------------------------------------------------------------------
+# estimate_average_speed_bps / format_eta
+# ---------------------------------------------------------------------------
+
+def test_estimate_average_speed_computes_mean_from_history():
+    history = [
+        {"success": True, "size_bytes": 50_000_000, "elapsed_seconds": 10},  # 5 MB/s
+        {"success": True, "size_bytes": 30_000_000, "elapsed_seconds": 6},  # 5 MB/s
+    ]
+    speed = utils.estimate_average_speed_bps(history)
+    assert speed == 5_000_000
+
+
+def test_estimate_average_speed_skips_failed_entries():
+    history = [
+        {"success": False, "size_bytes": 50_000_000, "elapsed_seconds": 10},
+        {"success": True, "size_bytes": 20_000_000, "elapsed_seconds": 4},  # 5 MB/s
+    ]
+    speed = utils.estimate_average_speed_bps(history)
+    assert speed == 5_000_000
+
+
+def test_estimate_average_speed_skips_entries_missing_data():
+    """Entri riwayat lama (sebelum fitur ini ada) gak punya size_bytes/elapsed_seconds - harus di-skip, bukan crash."""
+    history = [
+        {"success": True, "title": "video lama tanpa size_bytes"},
+        {"success": True, "size_bytes": 10_000_000, "elapsed_seconds": 2},  # 5 MB/s
+    ]
+    speed = utils.estimate_average_speed_bps(history)
+    assert speed == 5_000_000
+
+
+def test_estimate_average_speed_returns_none_when_no_data():
+    assert utils.estimate_average_speed_bps([]) is None
+    assert utils.estimate_average_speed_bps([{"success": True}]) is None
+
+
+def test_format_eta_under_a_minute():
+    assert utils.format_eta(50_000_000, 5_000_000) == "~10 detik"
+
+
+def test_format_eta_in_minutes():
+    assert utils.format_eta(600_000_000, 5_000_000) == "~2 menit"
+
+
+def test_format_eta_in_hours():
+    assert utils.format_eta(50_000_000_000, 5_000_000) == "~2.8 jam"
+
+
+def test_format_eta_none_when_missing_data():
+    assert utils.format_eta(None, 5_000_000) is None
+    assert utils.format_eta(50_000_000, None) is None
+    assert utils.format_eta(50_000_000, 0) is None
+
+
+# ---------------------------------------------------------------------------
 # config.json (load/save/history) — pakai tmp_path biar tidak sentuh file asli
 # ---------------------------------------------------------------------------
 
@@ -1375,6 +1502,119 @@ def test_detect_calls_extract_info_with_stripped_url(monkeypatch):
     assert "list=" not in captured_urls[0]
     assert content.title == "Judul Video Asli"
     assert "list=" not in content.url
+
+
+# ---------------------------------------------------------------------------
+# options.ask_video_choice / ask_audio_choice - label estimasi ukuran & waktu
+# ---------------------------------------------------------------------------
+
+def test_ask_video_choice_shows_size_estimate_when_content_given():
+    from core.detector import DetectedContent
+
+    content = DetectedContent(
+        url="https://youtube.com/watch?v=abc",
+        platform="YouTube",
+        title="Judul Video",
+        content_type="VIDEO",
+        duration=300,
+        entries=[],
+        raw_info={"formats": SAMPLE_VIDEO_FORMATS},
+    )
+
+    import unittest.mock as mock
+
+    with mock.patch.object(options.Prompt, "ask", side_effect=["1", "1"]):
+        with mock.patch.object(options.console, "print") as fake_print:
+            options.ask_video_choice(content, avg_speed_bps=5_000_000)
+
+    printed_text = " ".join(str(call.args[0]) for call in fake_print.call_args_list)
+    assert "MB" in printed_text
+    assert "detik" in printed_text or "menit" in printed_text
+
+
+def test_ask_video_choice_without_content_still_works():
+    """Backward-compat: dipanggil tanpa content (mis. dari test lama) tidak boleh crash, cuma gak ada estimasi."""
+    import unittest.mock as mock
+
+    with mock.patch.object(options.Prompt, "ask", side_effect=["1", "1"]):
+        choice = options.ask_video_choice()
+
+    assert choice.output_kind == "video"
+
+
+def test_ask_video_choice_no_estimate_when_formats_missing():
+    """Konten tanpa data 'formats' (mis. platform yang gak expose) tetap jalan normal tanpa estimasi."""
+    from core.detector import DetectedContent
+
+    content = DetectedContent(
+        url="https://example.com/video",
+        platform="Unknown",
+        title="Video",
+        content_type="VIDEO",
+        duration=100,
+        entries=[],
+        raw_info={},  # tidak ada key "formats" sama sekali
+    )
+
+    import unittest.mock as mock
+
+    with mock.patch.object(options.Prompt, "ask", side_effect=["1", "1"]):
+        choice = options.ask_video_choice(content, avg_speed_bps=5_000_000)
+
+    assert choice.output_kind == "video"
+
+
+def test_ask_audio_choice_shows_size_estimate_when_content_given():
+    from core.detector import DetectedContent
+
+    formats = [{"acodec": "mp4a", "abr": 128, "filesize": 4_000_000}]
+    content = DetectedContent(
+        url="https://youtube.com/watch?v=abc",
+        platform="YouTube",
+        title="Judul Lagu",
+        content_type="AUDIO",
+        duration=240,
+        entries=[],
+        raw_info={"formats": formats},
+    )
+
+    import unittest.mock as mock
+
+    with mock.patch.object(options.Prompt, "ask", side_effect=["1", "1"]):
+        with mock.patch.object(options.console, "print") as fake_print:
+            options.ask_audio_choice(content, avg_speed_bps=5_000_000)
+
+    printed_text = " ".join(str(call.args[0]) for call in fake_print.call_args_list)
+    assert "MB" in printed_text
+
+
+def test_resolve_choice_threads_avg_speed_to_video_choice(monkeypatch):
+    """Test integrasi: resolve_choice() harus benar-benar meneruskan avg_speed_bps sampai ke ask_video_choice()."""
+    from core.detector import DetectedContent
+
+    content = DetectedContent(
+        url="https://youtube.com/watch?v=abc",
+        platform="YouTube",
+        title="Judul Video",
+        content_type="VIDEO",
+        duration=300,
+        entries=[],
+        raw_info={"formats": SAMPLE_VIDEO_FORMATS},
+    )
+
+    captured = {}
+    original = options.ask_video_choice
+
+    def spy(content_arg, avg_speed_bps=None):
+        captured["avg_speed_bps"] = avg_speed_bps
+        return original(content_arg, avg_speed_bps)
+
+    monkeypatch.setattr(options, "ask_video_choice", spy)
+    monkeypatch.setattr(options.Prompt, "ask", lambda *a, **k: "1")
+
+    options.resolve_choice(content, avg_speed_bps=7_000_000)
+
+    assert captured["avg_speed_bps"] == 7_000_000
 
 
 # ---------------------------------------------------------------------------

@@ -6,6 +6,7 @@ Entry point aplikasi.
 
 from __future__ import annotations
 
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -103,7 +104,8 @@ def process_url(url: str, config: dict) -> None:
         return
 
     options.show_content_panel(content)
-    choice = options.resolve_choice(content)
+    avg_speed_bps = utils.estimate_average_speed_bps(config.get("history", []))
+    choice = options.resolve_choice(content, avg_speed_bps)
 
     output_folder = Path(config["download_folder"]).expanduser()
     filename_preview = utils.build_filename(content.platform, content.title, choice.fmt, config["naming_template"])
@@ -122,6 +124,7 @@ def process_url(url: str, config: dict) -> None:
 
     try:
         if content.raw_info.get("source") == "instaloader":
+            instaloader_start = time.time()
             result = instagram_fallback.download_photos(
                 content,
                 choice.selected_indices,
@@ -131,6 +134,8 @@ def process_url(url: str, config: dict) -> None:
             )
             total_size = sum(p.stat().st_size for p in result.paths if p.exists())
             entry["size"] = utils.format_size(total_size)
+            entry["size_bytes"] = total_size
+            entry["elapsed_seconds"] = time.time() - instaloader_start
             entry["success"] = result.success_count > 0
 
             if result.failed_count == 0:
@@ -161,6 +166,8 @@ def process_url(url: str, config: dict) -> None:
                 cookies_browser=config.get("cookies_browser"),
             )
             entry["size"] = utils.format_size(result.size_bytes)
+            entry["size_bytes"] = result.size_bytes
+            entry["elapsed_seconds"] = result.elapsed_seconds
             entry["success"] = result.file_count > 0
 
             if not entry["success"]:

@@ -29,6 +29,7 @@
 | 🖼 **Gambar & carousel** | Download satu gambar, semua sekaligus, atau pilih nomor tertentu (misal post Instagram multi-foto) - foto Instagram pakai fallback `instaloader` otomatis, konversi JPG/PNG/WEBP berlaku di semua sumber gambar |
 | 📋 **Auto-paste clipboard** | Kalau ada link valid di clipboard, langsung ditawarkan tanpa perlu paste manual - tidak akan nanya ulang isi clipboard yang sama berkali-kali |
 | 📊 **Progress bar real-time** | Kecepatan, ukuran, dan estimasi waktu tersisa lewat `rich` |
+| 📐 **Estimasi ukuran & waktu** | Muncul di menu pilih quality (video/audio), dihitung dari data yt-dlp + kecepatan rata-rata download kamu sebelumnya |
 | 🔄 **Auto-retry** | Error koneksi dicoba ulang otomatis (default 3x), error fatal (private/invalid) langsung dilaporkan |
 | 🗂 **Riwayat download** | 20 entri terakhir tersimpan, bisa dilihat kapan saja lewat command `history` |
 | ⚙️ **Pengaturan persisten** | Folder download (default: folder Downloads OS, ganti kapan saja), max retry, auto-paste, dan naming template diingat lewat `config.json` |
@@ -171,6 +172,24 @@ Buat nutupin celah ini, Lumenfetch otomatis "banting setir" pakai [`instaloader`
 - ✅ Post foto tunggal atau carousel foto → otomatis lewat `instaloader`, muncul opsi format (JPG/PNG/WEBP) dan pilih semua/tertentu seperti biasa
 - ⚠️ Post private yang kamu belum follow, atau butuh login → tetap gagal walau fallback aktif (baik `yt-dlp` maupun `instaloader` sama-sama butuh sesi login buat itu; coba fitur **Cookies dari Browser** di atas)
 - 🔄 Carousel dengan banyak foto: tiap foto didownload independen. Kalau ada 1-2 foto yang gagal (mis. koneksi putus), yang lain tetap lanjut dan hasilnya dilaporkan apa adanya (mis. "3/5 gambar berhasil"), bukan dianggap gagal total ataupun disamarkan jadi sukses penuh
+
+## 📐 Estimasi Ukuran & Waktu Download
+
+Pas milih quality buat video atau audio, Lumenfetch nampilin perkiraan ukuran file dan waktu download di sebelah tiap opsi:
+
+```
+Pilih Quality:
+  [1] Best   (default)  (~147.8 MB, ~31 detik)
+  [2] 1080p              (~147.8 MB, ~31 detik)
+  [3] 720p               (~81.1 MB, ~17 detik)
+  [4] 480p               (~42.9 MB, ~9 detik)
+```
+
+Cara kerjanya:
+
+- **Ukuran** dihitung dari data yang yt-dlp udah dapat pas proses "Mendeteksi konten..." (gak ada request tambahan ke platform, jadi gak bikin lambat)
+- **Waktu** dihitung dari kecepatan rata-rata beberapa download terakhir kamu yang sukses (bukan angka tebakan generik) - makin sering pakai Lumenfetch, makin akurat estimasinya
+- Kalau datanya gak cukup buat ngasih estimasi yang jujur (mis. platform gak expose ukuran file sama sekali, quality tier yang diminta gak tersedia buat konten itu, atau ini baru pertama kali pakai aplikasi jadi belum ada riwayat kecepatan) - estimasinya gak ditampilin sama sekali, daripada nampilin angka ngasal
 
 ## 🔔 Auto-check Update yt-dlp
 

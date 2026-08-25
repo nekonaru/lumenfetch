@@ -292,3 +292,129 @@ def format_duration(seconds) -> str:
     if h:
         return f"{h}:{m:02d}:{s:02d}"
     return f"{m}:{s:02d}"
+
+
+def _format_size_bytes_from_info(fmt: dict, duration: float | None) -> int | None:
+    """
+    Ambil ukuran (bytes) dari satu format yt-dlp. "filesize" itu ukuran
+    exact yang dilaporkan platform, "filesize_approx" perkiraan yt-dlp
+    sendiri. Kalau dua-duanya gak ada (cukup umum, banyak platform gak
+    ngasih tau ukuran di metadata), fallback hitung dari bitrate (tbr,
+    satuan kbit/s) dikali durasi video.
+    """
+    if fmt.get("filesize"):
+        return int(fmt["filesize"])
+    if fmt.get("filesize_approx"):
+        return int(fmt["filesize_approx"])
+    tbr = fmt.get("tbr")
+    if tbr and duration:
+        return int(tbr * 1000 / 8 * duration)
+    return None
+
+
+def estimate_video_size_bytes(formats: list[dict], quality: str, duration: float | None) -> int | None:
+    """
+    Estimasi ukuran total (video + audio yang bakal digabung) buat satu
+    opsi quality, berdasarkan daftar format yang sudah didapat yt-dlp pas
+    deteksi (tanpa perlu request tambahan ke platform). Return None kalau
+    datanya gak cukup buat ngasih estimasi (mis. platform gak expose
+    filesize/bitrate sama sekali) - lebih baik gak nampilin estimasi
+    daripada nampilin angka ngasal.
+    """
+    if not formats or not duration:
+        return None
+
+    height_limits = {"1080p": 1080, "720p": 720, "480p": 480, "360p": 360}
+    limit = height_limits.get(quality)
+
+    video_formats = [f for f in formats if f.get("vcodec") not in (None, "none") and f.get("height")]
+    if not video_formats:
+        return None
+
+    if quality == "Worst":
+        video_formats.sort(key=lambda f: f["height"])
+    else:
+        if limit:
+            video_formats = [f for f in video_formats if f["height"] <= limit]
+            if not video_formats:
+                # Tier ini kemungkinan besar gak tersedia buat konten ini
+                # (mis. sumbernya cuma sampai 720p, gak ada opsi 360p) -
+                # mending gak nampilin estimasi sama sekali daripada nebak
+                # pakai ukuran tier LAIN yang bisa menyesatkan (kelihatan
+                # kayak "360p ukurannya segede 1080p").
+                return None
+        video_formats.sort(key=lambda f: f["height"], reverse=True)
+
+    video_size = _format_size_bytes_from_info(video_formats[0], duration)
+    if video_size is None:
+        return None
+
+    audio_formats = [
+        f for f in formats if f.get("acodec") not in (None, "none") and f.get("vcodec") in (None, "none")
+    ]
+    audio_size = 0
+    if audio_formats:
+        audio_formats.sort(key=lambda f: f.get("abr") or 0, reverse=(quality != "Worst"))
+        audio_size = _format_size_bytes_from_info(audio_formats[0], duration) or 0
+
+    return video_size + audio_size
+
+
+def estimate_audio_size_bytes(formats: list[dict], quality: str, duration: float | None) -> int | None:
+    """
+    Estimasi ukuran hasil ekstraksi audio. Untuk quality dengan bitrate
+    tetap (320/192/128 kbps), dihitung langsung dari bitrate target itu
+    sendiri (lebih akurat, karena itu memang bitrate output-nya setelah
+    ffmpeg convert - bukan bitrate sumbernya). Untuk "Best", dipakai
+    estimasi dari stream audio sumber terbaik yang ada.
+    """
+    if not duration:
+        return None
+
+    kbps_map = {"320kbps": 320, "192kbps": 192, "128kbps": 128}
+    target_kbps = kbps_map.get(quality)
+    if target_kbps:
+        return int(target_kbps * 1000 / 8 * duration)
+
+    audio_formats = [f for f in (formats or []) if f.get("acodec") not in (None, "none")]
+    if not audio_formats:
+        return None
+    audio_formats.sort(key=lambda f: f.get("abr") or 0, reverse=True)
+    return _format_size_bytes_from_info(audio_formats[0], duration)
+
+
+def estimate_average_speed_bps(history: list[dict], sample_size: int = 10) -> float | None:
+    """
+    Kecepatan download rata-rata (bytes/detik) dari beberapa download
+    terakhir yang sukses di riwayat - dipakai buat estimasi waktu download,
+    lebih jujur daripada nebak angka kecepatan generik yang belum tentu
+    sesuai koneksi user. Return None kalau belum ada riwayat yang punya
+    data lengkap (mis. baru pertama kali pakai aplikasi).
+    """
+    speeds = []
+    for entry in (history or [])[:sample_size]:
+        if not entry.get("success"):
+            continue
+        size_bytes = entry.get("size_bytes")
+        elapsed = entry.get("elapsed_seconds")
+        if size_bytes and elapsed and elapsed > 0:
+            speeds.append(size_bytes / elapsed)
+
+    if not speeds:
+        return None
+    return sum(speeds) / len(speeds)
+
+
+def format_eta(size_bytes: int | None, speed_bps: float | None) -> str | None:
+    """Ubah estimasi ukuran + kecepatan jadi teks perkiraan waktu ("~14 detik", "~2 menit"). None kalau datanya kurang."""
+    if not size_bytes or not speed_bps or speed_bps <= 0:
+        return None
+
+    seconds = size_bytes / speed_bps
+    if seconds < 60:
+        return f"~{seconds:.0f} detik"
+    minutes = seconds / 60
+    if minutes < 60:
+        return f"~{minutes:.0f} menit"
+    hours = minutes / 60
+    return f"~{hours:.1f} jam"
