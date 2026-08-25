@@ -92,7 +92,15 @@ def strip_playlist_context(url: str) -> str:
     if "list" not in query:
         return url
 
-    has_specific_video = "v" in query or "/shorts/" in parts.path or "/embed/" in parts.path
+    has_specific_video = (
+        "v" in query
+        or "/shorts/" in parts.path
+        or "/embed/" in parts.path
+        # youtu.be/<video-id> - video ID-nya ada di PATH, bukan di query "v=".
+        # Ini format link yang paling sering muncul (tombol Share YouTube),
+        # jadi paling krusial buat gak kelewat.
+        or (parts.netloc.endswith("youtu.be") and parts.path.strip("/") != "")
+    )
     if not has_specific_video:
         return url  # kemungkinan besar ini memang link playlist murni, biarkan apa adanya
 
