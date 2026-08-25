@@ -1314,6 +1314,26 @@ def test_strip_playlist_context_youtu_be_root_without_video_id_unchanged():
     assert strip_playlist_context(url) == url
 
 
+def test_strip_playlist_context_does_not_match_lookalike_domain():
+    """
+    Regresi presisi: "netloc.endswith('youtu.be')" secara teknis juga match
+    domain asing kayak "notyoutu.be" (cuma cek akhiran string, bukan domain
+    persis). Harus exact match "youtu.be" atau subdomain sah "*.youtu.be".
+    """
+    from core.detector import strip_playlist_context
+
+    url = "https://notyoutu.be/ID?list=PLxxxxxx"
+    assert strip_playlist_context(url) == url  # domain asing, TIDAK boleh ke-strip
+
+
+def test_strip_playlist_context_handles_youtu_be_subdomain():
+    from core.detector import strip_playlist_context
+
+    url = "https://www.youtu.be/dQw4w9WgXcQ?list=PLxxxxxx"
+    result = strip_playlist_context(url)
+    assert "list=" not in result
+
+
 def test_strip_playlist_context_untouched_for_non_youtube_url():
     """Galeri Pinterest/Reddit/Twitter tidak pernah punya parameter 'list' - dijamin tidak kesentuh sama sekali."""
     from core.detector import strip_playlist_context
