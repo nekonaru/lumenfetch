@@ -192,7 +192,20 @@ def process_url(url: str, config: dict) -> None:
 
 def main() -> None:
     console.print("[dim]Menyiapkan ffmpeg...[/dim]")
-    static_ffmpeg.add_paths()  # Download/pasang ffmpeg bundled kalau belum ada, tambahkan ke PATH
+    try:
+        static_ffmpeg.add_paths()  # Download/pasang ffmpeg bundled kalau belum ada, tambahkan ke PATH
+    except Exception as e:  # noqa: BLE001
+        # static_ffmpeg butuh internet buat download binary ffmpeg di
+        # percobaan PERTAMA (kalau belum pernah ke-download di komputer
+        # ini). Kalau gagal (offline, GitHub diblokir firewall kantor/
+        # kampus, dll), TIDAK BOLEH bikin seluruh aplikasi gagal dibuka -
+        # banyak fitur (deteksi konten, download gambar tunggal, dll)
+        # sama sekali gak butuh ffmpeg. Cukup kasih tau, lanjut jalan.
+        console.print(f"[yellow]⚠️  Gagal menyiapkan ffmpeg bundled: {e}[/yellow]")
+        console.print(
+            "[dim]Fitur yang butuh ffmpeg (merge video+audio, convert format gambar, "
+            "embed thumbnail) mungkin gagal sampai ffmpeg berhasil disiapkan.[/dim]"
+        )
 
     has_update, installed_version, latest_version = update_checker.check_for_update()
     if has_update and latest_version:

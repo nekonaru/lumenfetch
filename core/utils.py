@@ -79,8 +79,23 @@ def load_config() -> dict:
 
 
 def save_config(config: dict) -> None:
-    with CONFIG_PATH.open("w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
+    """
+    Simpan config ke config.json. Gagal simpan (mis. folder tempat app
+    dijalankan read-only) TIDAK raise - aplikasi tetap jalan pakai config
+    in-memory, cuma perubahannya gak ke-persist ke disk. Fail-safe di sini
+    otomatis melindungi SEMUA pemanggilnya (load_config, handle_settings di
+    main.py, add_history_entry) tanpa perlu tiap caller bungkus try/except
+    masing-masing.
+
+    utils.py sengaja tidak nge-print apa pun ke user (module ini "helper
+    murni" - lihat CONTRIBUTING.md, tidak boleh tahu soal CLI/rich) - kalau
+    perlu notifikasi ke user, itu tanggung jawab caller.
+    """
+    try:
+        with CONFIG_PATH.open("w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+    except OSError:
+        pass
 
 
 def add_history_entry(config: dict, entry: dict) -> None:

@@ -592,8 +592,83 @@ def test_download_photos_cleans_up_partial_file_on_failure(tmp_path, monkeypatch
 
 
 # ---------------------------------------------------------------------------
-# update_checker
+# main.main() - startup tidak boleh crash kalau static_ffmpeg gagal
 # ---------------------------------------------------------------------------
+
+def test_main_does_not_crash_when_static_ffmpeg_fails(monkeypatch):
+    """
+    Regresi bug KRITIS: static_ffmpeg.add_paths() butuh internet buat
+    download binary ffmpeg di percobaan PERTAMA di komputer itu. Kalau
+    gagal (offline, GitHub diblokir firewall kantor/kampus, dll) dan
+    pemanggilannya tidak dibungkus try/except, exception itu nembus sampai
+    ke __main__ (yang cuma nangkep KeyboardInterrupt) - user lihat
+    traceback Python mentah dan APLIKASI SAMA SEKALI TIDAK BISA DIBUKA,
+    padahal banyak fitur (deteksi konten, download gambar tunggal, dll)
+    sama sekali tidak butuh ffmpeg.
+    """
+    monkeypatch.setattr(
+        main.static_ffmpeg, "add_paths", lambda: (_ for _ in ()).throw(RuntimeError("gagal download ffmpeg"))
+    )
+    monkeypatch.setattr(main.update_checker, "check_for_update", lambda: (False, "2026.1.1", None))
+    monkeypatch.setattr(main.utils, "load_config", lambda: utils.get_default_config())
+    monkeypatch.setattr(main.options, "show_header", lambda version: None)
+    # Langsung "q" biar main() keluar dari loop tanpa perlu interaksi lain
+    monkeypatch.setattr(main, "try_clipboard_url", lambda config, last: (None, last))
+    monkeypatch.setattr(main.Prompt, "ask", lambda *a, **k: "q")
+
+    main.main()  # TIDAK BOLEH raise apa pun
+
+
+# ---------------------------------------------------------------------------
+# utils.save_config - fail-safe kalau disk write gagal
+# ---------------------------------------------------------------------------
+
+def test_save_config_does_not_raise_on_oserror(tmp_path, monkeypatch):
+    """
+    Regresi: save_config() (dipanggil dari load_config, handle_settings,
+    add_history_entry) dulu tidak dibungkus try/except - kalau folder
+    tempat app dijalankan read-only, ini bisa crash dengan pola yang sama
+    kayak bug static_ffmpeg di atas.
+    """
+    config_path = tmp_path / "config.json"
+    monkeypatch.setattr(utils, "CONFIG_PATH", config_path)
+
+    def fake_open(*args, **kwargs):
+        raise OSError("Read-only file system")
+
+    monkeypatch.setattr(Path, "open", fake_open)
+
+    utils.save_config(utils.get_default_config())  # TIDAK BOLEH raise
+
+
+def test_load_config_still_works_when_disk_write_fails(tmp_path, monkeypatch):
+    """
+    Test end-to-end: load_config() (yang manggil save_config() di baliknya
+    saat config.json belum ada) harus tetap balikin config in-memory yang
+    valid meski disk-nya gagal ditulis (mis. read-only) - fail-safe-nya
+    save_config() harus otomatis melindungi load_config() juga, tanpa perlu
+    load_config() punya try/except sendiri.
+    """
+    config_path = tmp_path / "config.json"
+    monkeypatch.setattr(utils, "CONFIG_PATH", config_path)
+
+    original_open = Path.open
+
+    def fake_open(self, *args, **kwargs):
+        mode = args[0] if args else kwargs.get("mode", "r")
+        if self == config_path and "w" in mode:
+            raise OSError("Read-only file system")
+        return original_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", fake_open)
+
+    config = utils.load_config()  # TIDAK BOLEH raise
+
+    assert config["download_folder"] == utils.get_default_download_folder()
+    assert not config_path.exists()  # gagal ke-tulis, tapi config in-memory tetap valid
+
+
+
 
 @pytest.mark.parametrize(
     "version,expected",
@@ -891,6 +966,34 @@ def test_ask_image_choice_keeps_only_valid_indices():
         choice = options.ask_image_choice(content)
 
     assert choice.selected_indices == [0, 1]  # nomor 1 dan 2 valid, "99" didrop
+
+
+# ---------------------------------------------------------------------------
+# downloader._classify_error - pesan error lebih akurat, bukan generik semua
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "error_msg,expected_kind",
+    [
+        ("HTTP Error 429: Too Many Requests", "rate_limit"),
+        ("rate-limit reached, try again later", "rate_limit"),
+        ("This video has been removed by the uploader", "removed"),
+        ("Content deleted by owner", "removed"),
+        ("no longer available in your country", "removed"),
+        ("Connection timed out", "connection"),
+        ("Private video, sign in required", "private"),
+        ("No space left on device", "disk"),
+        ("some completely unrecognized error message", "unknown"),
+    ],
+)
+def test_classify_error_distinguishes_rate_limit_and_removed(error_msg, expected_kind):
+    """
+    Regresi minor: dulu error yang gak cocok pola apa pun (rate-limit 429,
+    konten dihapus, dll) semuanya dilabeli "Koneksi internet bermasalah" -
+    padahal itu bukan masalah koneksi sama sekali. Sekarang dibedakan biar
+    pesannya gak menyesatkan user.
+    """
+    assert downloader._classify_error(Exception(error_msg)) == expected_kind
 
 
 def test_embed_thumbnail_skipped_for_webm(tmp_path):

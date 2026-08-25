@@ -98,6 +98,10 @@ def detect(url: str, cookies_browser: str | None = None) -> DetectedContent:
             raise DetectionError("Konten ini private / tidak bisa diakses") from e
         if "unsupported url" in msg:
             raise DetectionError("URL tidak valid atau tidak didukung") from e
+        if "429" in msg or "too many requests" in msg or "rate-limit" in msg or "rate limit" in msg:
+            raise DetectionError("Terlalu banyak request ke platform ini - tunggu sebentar lalu coba lagi") from e
+        if "removed" in msg or "deleted" in msg or "no longer available" in msg:
+            raise DetectionError("Konten ini sudah dihapus / tidak lagi tersedia") from e
         raise DetectionError("Koneksi internet bermasalah, coba lagi") from e
     except Exception as e:  # noqa: BLE001
         raise DetectionError("URL tidak valid atau tidak didukung") from e

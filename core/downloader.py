@@ -108,6 +108,10 @@ def _classify_error(e: Exception) -> str:
         return "format"
     if "no space left" in msg:
         return "disk"
+    if "429" in msg or "too many requests" in msg or "rate-limit" in msg or "rate limit" in msg:
+        return "rate_limit"
+    if "removed" in msg or "deleted" in msg or "no longer available" in msg:
+        return "removed"
     return "unknown"
 
 
@@ -117,6 +121,8 @@ def _friendly_message(kind: str) -> str:
         "private": "❌ Konten ini private / tidak bisa diakses",
         "format": "❌ Format tidak tersedia untuk konten ini",
         "disk": "❌ Tidak cukup ruang disk",
+        "rate_limit": "❌ Terlalu banyak request ke platform ini - tunggu sebentar lalu coba lagi",
+        "removed": "❌ Konten ini sudah dihapus / tidak lagi tersedia",
         "unknown": "❌ Terjadi kesalahan saat download",
     }[kind]
 
