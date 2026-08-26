@@ -5,6 +5,7 @@ naming template, resolve duplikat, config, validasi URL, dll).
 """
 
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -716,6 +717,168 @@ def test_download_photos_cleans_up_partial_file_on_failure(tmp_path, monkeypatch
 
     leftover_files = list(tmp_path.glob("*"))
     assert leftover_files == [], f"file sisa masih ada, tidak dibersihkan: {leftover_files}"
+
+
+# ---------------------------------------------------------------------------
+# instagram_fallback.detect_photo - carousel campuran (foto+video)
+# ---------------------------------------------------------------------------
+
+def test_detect_photo_includes_videos_in_mixed_carousel(monkeypatch):
+    """
+    Regresi bug: carousel Instagram yang isinya CAMPURAN foto+video dulu
+    diam-diam nge-skip semua node video (`if not node.is_video`), user cuma
+    dapet foto-fotonya doang tanpa pemberitahuan apa pun kalau ada video
+    yang kelewat. Sekarang video-nya ikut disertakan (pakai video_url,
+    bukan display_url yang cuma thumbnail).
+    """
+
+    class FakeSidecarNode:
+        def __init__(self, is_video, url):
+            self.is_video = is_video
+            self.display_url = None if is_video else url
+            self.video_url = url if is_video else None
+
+    class FakePost:
+        typename = "GraphSidecar"
+        caption = "Liburan seru"
+        owner_username = "testuser"
+
+        def get_sidecar_nodes(self):
+            return [
+                FakeSidecarNode(False, "https://cdn/foto1.jpg"),
+                FakeSidecarNode(True, "https://cdn/video1.mp4"),
+                FakeSidecarNode(False, "https://cdn/foto2.jpg"),
+            ]
+
+    monkeypatch.setattr(instagram_fallback.instaloader, "Instaloader", lambda **kwargs: mock.MagicMock())
+    monkeypatch.setattr(instagram_fallback.instaloader.Post, "from_shortcode", lambda ctx, sc: FakePost())
+
+    content = instagram_fallback.detect_photo("https://www.instagram.com/p/ABC123/")
+
+    assert len(content.entries) == 3
+    assert content.raw_info["photo_count"] == 2
+    assert content.raw_info["video_count"] == 1
+
+    video_entries = [e for e in content.entries if e["is_video"]]
+    assert len(video_entries) == 1
+    assert video_entries[0]["url"] == "https://cdn/video1.mp4"  # video_url, bukan display_url
+
+
+def test_detect_photo_pure_image_carousel_unaffected(monkeypatch):
+    """Carousel foto-doang (tanpa video) tidak boleh berubah behavior-nya."""
+
+    class FakeSidecarNode:
+        def __init__(self, url):
+            self.is_video = False
+            self.display_url = url
+            self.video_url = None
+
+    class FakePost:
+        typename = "GraphSidecar"
+        caption = "Galeri foto"
+        owner_username = "testuser"
+
+        def get_sidecar_nodes(self):
+            return [FakeSidecarNode("https://cdn/foto1.jpg"), FakeSidecarNode("https://cdn/foto2.jpg")]
+
+    monkeypatch.setattr(instagram_fallback.instaloader, "Instaloader", lambda **kwargs: mock.MagicMock())
+    monkeypatch.setattr(instagram_fallback.instaloader.Post, "from_shortcode", lambda ctx, sc: FakePost())
+
+    content = instagram_fallback.detect_photo("https://www.instagram.com/p/XYZ789/")
+
+    assert len(content.entries) == 2
+    assert content.raw_info["photo_count"] == 2
+    assert content.raw_info["video_count"] == 0
+    assert all(not e["is_video"] for e in content.entries)
+
+
+def test_download_photos_saves_video_entry_as_mp4_without_conversion(tmp_path, monkeypatch):
+    """
+    Regresi: entry video di carousel campuran harus disimpan APA ADANYA
+    sebagai .mp4, TIDAK dipaksa lewat convert_image() (yang cuma buat
+    gambar) - convert_image() memakai ffmpeg buat konversi antar-format
+    gambar, bukan buat video.
+    """
+    convert_image_calls = []
+
+    def fake_convert_image(src, target_ext):
+        convert_image_calls.append(src.name)
+        return src
+
+    def fake_urlretrieve(url, dest):
+        Path(dest).write_bytes(b"fake-content")
+
+    monkeypatch.setattr(instagram_fallback, "convert_image", fake_convert_image)
+    monkeypatch.setattr(instagram_fallback.urllib.request, "urlretrieve", fake_urlretrieve)
+
+    class FakeContent:
+        platform = "Instagram"
+        title = "Liburan seru"
+        entries = [
+            {"url": "https://cdn/foto1.jpg", "is_video": False},
+            {"url": "https://cdn/video1.mp4", "is_video": True},
+        ]
+
+    result = instagram_fallback.download_photos(
+        FakeContent(), None, "png", tmp_path, "%(platform)s_%(title)s_%(year)s"
+    )
+
+    assert result.success_count == 2
+    video_paths = [p for p in result.paths if p.suffix == ".mp4"]
+    photo_paths = [p for p in result.paths if p.suffix != ".mp4"]
+    assert len(video_paths) == 1
+    assert len(photo_paths) == 1
+    # convert_image() cuma boleh dipanggil buat entry FOTO, bukan video
+    assert len(convert_image_calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# options.show_content_panel - carousel campuran
+# ---------------------------------------------------------------------------
+
+def test_show_content_panel_displays_mixed_carousel_breakdown():
+    from core.detector import DetectedContent
+
+    content = DetectedContent(
+        url="https://instagram.com/p/abc",
+        platform="Instagram",
+        title="Liburan seru",
+        content_type="IMAGE",
+        duration=None,
+        entries=[{"is_video": False}, {"is_video": True}, {"is_video": False}],
+        raw_info={"source": "instaloader", "photo_count": 2, "video_count": 1},
+    )
+
+    printed = []
+    with mock.patch.object(options.console, "print", lambda *a, **k: printed.append(a[0])):
+        options.show_content_panel(content)
+
+    panel_text = str(printed[0].renderable)
+    assert "2 gambar" in panel_text
+    assert "1 video" in panel_text
+
+
+def test_show_content_panel_pure_image_gallery_unaffected():
+    """Galeri gambar biasa (non-instaloader, atau instaloader tanpa video) tampilannya tidak boleh berubah."""
+    from core.detector import DetectedContent
+
+    content = DetectedContent(
+        url="https://pinterest.com/board/abc",
+        platform="Pinterest",
+        title="Board Foto",
+        content_type="IMAGE",
+        duration=None,
+        entries=[{"url": "a"}, {"url": "b"}, {"url": "c"}],
+        raw_info={},
+    )
+
+    printed = []
+    with mock.patch.object(options.console, "print", lambda *a, **k: printed.append(a[0])):
+        options.show_content_panel(content)
+
+    panel_text = str(printed[0].renderable)
+    assert "3 gambar" in panel_text
+    assert "video" not in panel_text
 
 
 # ---------------------------------------------------------------------------

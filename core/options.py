@@ -60,11 +60,24 @@ def show_update_notice(installed_version: str, latest_version: str) -> None:
 
 
 def show_content_panel(content: DetectedContent) -> None:
+    photo_count = content.raw_info.get("photo_count")
+    video_count = content.raw_info.get("video_count")
+
+    if content.content_type == "IMAGE" and content.entries:
+        if photo_count is not None and video_count:
+            # Carousel campuran (foto+video) - transparan dari awal biar user
+            # gak kaget nemu video ikut kesimpen padahal cuma minta "gambar",
+            # atau sebaliknya nyangka semuanya foto padahal ada videonya.
+            count_text = f" ({photo_count} gambar, {video_count} video)"
+        else:
+            count_text = f" ({len(content.entries)} gambar)"
+    else:
+        count_text = ""
+
     lines = [
         f"[bold]Platform[/bold]  : {content.platform}",
         f"[bold]Judul[/bold]     : {content.title}",
-        f"[bold]Tipe[/bold]      : {content.content_type}"
-        + (f" ({len(content.entries)} gambar)" if content.content_type == "IMAGE" and content.entries else ""),
+        f"[bold]Tipe[/bold]      : {content.content_type}{count_text}",
     ]
     if content.duration:
         lines.append(f"[bold]Durasi[/bold]    : {format_duration(content.duration)}")

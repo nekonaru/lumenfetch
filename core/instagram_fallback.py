@@ -60,15 +60,31 @@ def detect_photo(url: str):
         raise DetectionError("URL tidak valid atau tidak didukung") from e
 
     entries = []
+    photo_count = 0
+    video_count = 0
+
     if post.typename == "GraphSidecar":
         for node in post.get_sidecar_nodes():
-            if not node.is_video:
-                entries.append({"url": node.display_url})
-    elif not post.is_video:
-        entries.append({"url": post.url})
+            if node.is_video:
+                # DULU video di dalam carousel campuran (foto+video) DIAM-DIAM
+                # DI-SKIP TOTAL - user cuma dapet foto-fotonya doang, videonya
+                # ilang tanpa pemberitahuan apa pun. Sekarang disertakan, dengan
+                # video_url langsung dari instaloader (bukan display_url yang
+                # cuma thumbnail-nya).
+                entries.append({"url": node.video_url, "is_video": True})
+                video_count += 1
+            else:
+                entries.append({"url": node.display_url, "is_video": False})
+                photo_count += 1
+    elif post.is_video:
+        entries.append({"url": post.video_url, "is_video": True})
+        video_count += 1
+    else:
+        entries.append({"url": post.url, "is_video": False})
+        photo_count += 1
 
     if not entries:
-        raise DetectionError("Postingan ini tidak berisi foto yang bisa didownload")
+        raise DetectionError("Postingan ini tidak berisi foto/video yang bisa didownload")
 
     raw_title = (post.caption or "").strip().splitlines()[0] if post.caption else ""
     title = raw_title or f"Post by {post.owner_username}"
@@ -80,7 +96,7 @@ def detect_photo(url: str):
         content_type="IMAGE",
         duration=None,
         entries=entries,
-        raw_info={"source": "instaloader"},
+        raw_info={"source": "instaloader", "photo_count": photo_count, "video_count": video_count},
     )
 
 
@@ -128,12 +144,18 @@ def download_photos(
 
     for idx, entry in enumerate(entries, start=1):
         title = f"{content.title}-{idx}" if total > 1 else content.title
-        filename = build_filename(content.platform, title, "jpg", naming_template)
+        is_video_entry = entry.get("is_video", False)
+        # Entry video di dalam carousel campuran disimpan APA ADANYA sebagai
+        # .mp4 - TIDAK dipaksa lewat convert_image() (yang khusus buat
+        # gambar), karena format target (target_ext) yang dipilih user itu
+        # buat foto-fotonya, bukan buat video yang kebetulan ikut satu post.
+        ext = "mp4" if is_video_entry else "jpg"
+        filename = build_filename(content.platform, title, ext, naming_template)
         dest = resolve_duplicate(output_folder / filename)
 
         try:
             urllib.request.urlretrieve(entry["url"], dest)  # noqa: S310 - URL dari instaloader (CDN Instagram resmi)
-            final_path = convert_image(dest, target_ext)
+            final_path = dest if is_video_entry else convert_image(dest, target_ext)
             results.append(final_path)
         except Exception:  # noqa: BLE001
             # urlretrieve() yang gagal di tengah transfer (bukan gagal total
