@@ -1190,6 +1190,140 @@ def test_multi_item_no_selection_downloads_all(tmp_path):
     assert "playlist_items" not in opts
 
 
+# ---------------------------------------------------------------------------
+# downloader._build_ydl_opts - force_single_item (bug playlist murni)
+# ---------------------------------------------------------------------------
+
+def test_force_single_item_sets_playlist_items_to_one(tmp_path):
+    """
+    Regresi bug: "noplaylist" TIDAK berefek buat URL playlist murni (tanpa
+    "v="), dikonfirmasi maintainer yt-dlp sendiri (issue #5215, di-close
+    sebagai "expected behavior" bukan bug). Tanpa force_single_item, kalau
+    content_type VIDEO/AUDIO ternyata punya banyak entries (URL-nya
+    sebenarnya playlist murni), seluruh playlist bakal kedownload dan semua
+    entry saling menimpa nama file yang sama (outtmpl gak punya index unik
+    buat kasus non-gambar) - cuma video terakhir yang tersisa di disk,
+    padahal app melaporkan "sukses" pakai judul playlist.
+    """
+    choice = DownloadChoice(output_kind="video", quality="Best", fmt="mp4")
+    opts = downloader._build_ydl_opts(choice, tmp_path / "video.mp4", force_single_item=True)
+    assert opts["playlist_items"] == "1"
+
+
+def test_force_single_item_not_set_by_default(tmp_path):
+    choice = DownloadChoice(output_kind="video", quality="Best", fmt="mp4")
+    opts = downloader._build_ydl_opts(choice, tmp_path / "video.mp4")
+    assert "playlist_items" not in opts
+
+
+def test_force_single_item_does_not_conflict_with_gallery_selection(tmp_path):
+    """force_single_item dan selected_indices gallery TIDAK PERNAH aktif bersamaan (mutually exclusive by design)."""
+    choice = DownloadChoice(output_kind="image", fmt="jpg", selected_indices=[0, 2])
+    opts = downloader._build_ydl_opts(choice, tmp_path / "foto.jpg", multi_item=True, force_single_item=False)
+    assert opts["playlist_items"] == "1,3"  # tetap dari selected_indices, bukan "1" doang
+
+
+def test_download_forces_single_item_for_pure_playlist_video(tmp_path, monkeypatch):
+    """
+    Test integrasi end-to-end: download() dengan content_type VIDEO yang
+    punya banyak entries (playlist murni, bukan galeri gambar) harus
+    benar-benar mengirim playlist_items="1" ke yt-dlp - bukan cuma diuji di
+    level _build_ydl_opts yang terisolasi.
+    """
+    captured_opts = {}
+
+    class FakeYDL:
+        def __init__(self, opts):
+            captured_opts.update(opts)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def download(self, urls):
+            (tmp_path / "Judul-Playlist_2026.mp4").write_bytes(b"video pertama doang")
+
+    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", FakeYDL)
+
+    class FakePlaylistContent:
+        url = "https://www.youtube.com/playlist?list=PLxxxxxx"
+        platform = "YouTube"
+        title = "Judul Playlist"
+        entries = [{"url": "video1"}, {"url": "video2"}, {"url": "video3"}]
+
+    choice = DownloadChoice(output_kind="video", quality="Best", fmt="mp4")
+
+    downloader.download(FakePlaylistContent(), choice, tmp_path, "%(platform)s_%(title)s_%(year)s")
+
+    assert captured_opts.get("playlist_items") == "1"
+
+
+def test_download_does_not_force_single_item_for_single_video(tmp_path, monkeypatch):
+    """Video biasa (entries kosong/1) tidak boleh ke-treat sebagai playlist."""
+    captured_opts = {}
+
+    class FakeYDL:
+        def __init__(self, opts):
+            captured_opts.update(opts)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def download(self, urls):
+            (tmp_path / "Judul-Video_2026.mp4").write_bytes(b"video biasa")
+
+    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", FakeYDL)
+
+    class FakeSingleVideoContent:
+        url = "https://www.youtube.com/watch?v=abc"
+        platform = "YouTube"
+        title = "Judul Video"
+        entries = []
+
+    choice = DownloadChoice(output_kind="video", quality="Best", fmt="mp4")
+
+    downloader.download(FakeSingleVideoContent(), choice, tmp_path, "%(platform)s_%(title)s_%(year)s")
+
+    assert "playlist_items" not in captured_opts
+
+
+def test_download_forces_single_item_for_video_thumbnail_from_playlist(tmp_path, monkeypatch):
+    """Thumbnail video (bukan galeri gambar) dari playlist URL juga harus dilindungi, bukan cuma video/audio biasa."""
+    captured_opts = {}
+
+    class FakeYDL:
+        def __init__(self, opts):
+            captured_opts.update(opts)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def download(self, urls):
+            (tmp_path / "Judul-Playlist_2026.jpg").write_bytes(b"thumbnail")
+
+    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", FakeYDL)
+
+    class FakePlaylistContent:
+        url = "https://www.youtube.com/playlist?list=PLxxxxxx"
+        platform = "YouTube"
+        title = "Judul Playlist"
+        entries = [{"url": "video1"}, {"url": "video2"}]
+
+    choice = DownloadChoice(output_kind="image", fmt="jpg", is_video_thumbnail=True)
+
+    downloader.download(FakePlaylistContent(), choice, tmp_path, "%(platform)s_%(title)s_%(year)s")
+
+    assert captured_opts.get("playlist_items") == "1"
+
+
 def test_download_computes_multi_item_before_resolve_duplicate(tmp_path, monkeypatch):
     """
     Regresi integrasi: memastikan download() betul-betul menghitung
@@ -1740,5 +1874,71 @@ def test_handle_settings_accepts_absolute_path_unchanged(monkeypatch, tmp_path):
 
     assert result["download_folder"] == str(tmp_path / "CustomFolder")
 
+
+# ---------------------------------------------------------------------------
+# main.process_url - warning transparan buat URL playlist murni
+# ---------------------------------------------------------------------------
+
+def test_process_url_warns_user_about_pure_playlist(tmp_path, monkeypatch):
+    """
+    User berhak tahu kalau URL yang mereka paste ternyata playlist murni dan
+    cuma video pertama yang bakal didownload - daripada diam-diam cuma
+    ngasih 1 dari sekian video yang mereka kira bakal didownload semua.
+    """
+    from core.detector import DetectedContent
+
+    playlist_content = DetectedContent(
+        url="https://www.youtube.com/playlist?list=PLxxxxxx",
+        platform="YouTube",
+        title="Judul Playlist",
+        content_type="VIDEO",
+        duration=None,
+        entries=[{"url": "v1"}, {"url": "v2"}, {"url": "v3"}],
+        raw_info={},
+    )
+
+    monkeypatch.setattr(main, "detect", lambda url, cookies_browser=None: playlist_content)
+    monkeypatch.setattr(main.options, "show_content_panel", lambda content: None)
+    monkeypatch.setattr(
+        main.options, "resolve_choice", lambda content, avg_speed_bps=None: DownloadChoice(output_kind="video", fmt="mp4")
+    )
+    monkeypatch.setattr(main.options, "confirm_filename", lambda filename: False)  # keluar lebih awal, cukup cek warning
+
+    printed = []
+    monkeypatch.setattr(main.console, "print", lambda *a, **k: printed.append(str(a[0]) if a else ""))
+
+    main.process_url("https://www.youtube.com/playlist?list=PLxxxxxx", utils.get_default_config())
+
+    warning_shown = any("playlist" in line.lower() and "3 video" in line for line in printed)
+    assert warning_shown, f"Warning playlist tidak muncul. Yang ke-print: {printed}"
+
+
+def test_process_url_no_warning_for_single_video(tmp_path, monkeypatch):
+    from core.detector import DetectedContent
+
+    single_content = DetectedContent(
+        url="https://www.youtube.com/watch?v=abc",
+        platform="YouTube",
+        title="Judul Video",
+        content_type="VIDEO",
+        duration=120,
+        entries=[],
+        raw_info={},
+    )
+
+    monkeypatch.setattr(main, "detect", lambda url, cookies_browser=None: single_content)
+    monkeypatch.setattr(main.options, "show_content_panel", lambda content: None)
+    monkeypatch.setattr(
+        main.options, "resolve_choice", lambda content, avg_speed_bps=None: DownloadChoice(output_kind="video", fmt="mp4")
+    )
+    monkeypatch.setattr(main.options, "confirm_filename", lambda filename: False)
+
+    printed = []
+    monkeypatch.setattr(main.console, "print", lambda *a, **k: printed.append(str(a[0]) if a else ""))
+
+    main.process_url("https://www.youtube.com/watch?v=abc", utils.get_default_config())
+
+    warning_shown = any("playlist berisi" in line.lower() for line in printed)
+    assert not warning_shown
 
 

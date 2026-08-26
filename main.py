@@ -104,6 +104,21 @@ def process_url(url: str, config: dict) -> None:
         return
 
     options.show_content_panel(content)
+
+    if content.content_type in ("VIDEO", "AUDIO") and len(content.entries) > 1:
+        # URL ini playlist murni (bukan galeri gambar), yang berarti
+        # download() nanti bakal maksa cuma ambil entry pertama (lihat
+        # force_single_item di downloader.py - "noplaylist" gak berefek buat
+        # URL playlist murni, dikonfirmasi maintainer yt-dlp sendiri).
+        # Transparan ke user daripada diam-diam cuma ngasih 1 dari sekian
+        # video yang mereka kira bakal didownload semua.
+        console.print(
+            f"[yellow]⚠️  URL ini playlist berisi {len(content.entries)} video - "
+            "Lumenfetch cuma download SATU per URL (video pertama), bukan "
+            "playlist manager. Kalau mau video tertentu, paste link video "
+            "itu langsung.[/yellow]"
+        )
+
     avg_speed_bps = utils.estimate_average_speed_bps(config.get("history", []))
     choice = options.resolve_choice(content, avg_speed_bps)
 

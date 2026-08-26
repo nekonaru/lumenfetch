@@ -141,6 +141,8 @@ def download(
     ext = choice.fmt
     filename = build_filename(content.platform, content.title, ext, naming_template)
 
+    entries_count = len(getattr(content, "entries", None) or [])
+
     # Konten gambar multi-item (carousel/galeri yang terdeteksi via yt-dlp,
     # BUKAN instaloader - itu punya jalur download sendiri) butuh perlakuan
     # khusus: noplaylist harus dimatikan supaya semua/entry terpilih ikut
@@ -150,11 +152,26 @@ def download(
     # PENTING: harus dihitung SEBELUM resolve_duplicate() dipanggil, karena
     # deteksi duplikat untuk multi-item butuh pola pencarian yang beda
     # (lihat docstring resolve_duplicate).
-    is_multi_item = choice.output_kind == "image" and len(getattr(content, "entries", None) or []) > 1
+    is_multi_item = choice.output_kind == "image" and not choice.is_video_thumbnail and entries_count > 1
+
+    # Kasus SEBALIKNYA: content_type VIDEO/AUDIO tapi entries > 1 berarti
+    # URL-nya sebenarnya playlist MURNI (tanpa parameter "v="), bukan galeri
+    # gambar. "noplaylist" TIDAK berefek buat URL semacam ini - dikonfirmasi
+    # langsung oleh maintainer yt-dlp sendiri (issue #5215, di-close sebagai
+    # "expected behavior"): noplaylist cuma mencegah playlist ke-download
+    # kalau URL-nya nunjuk video SPESIFIK di dalam playlist (ada "v="), sama
+    # sekali gak berefek buat URL playlist murni. Tanpa penanganan ini,
+    # seluruh playlist bakal kedownload dan semua entry saling menimpa nama
+    # file yang sama (app ini didesain satu konten per URL, bukan playlist
+    # manager) - playlist_items="1" memaksa cuma entry pertama yang diambil,
+    # apa pun isi "noplaylist"-nya.
+    force_single_item = not is_multi_item and entries_count > 1
 
     dest = resolve_duplicate(output_folder / filename, multi_item=is_multi_item)
 
-    ydl_opts = _build_ydl_opts(choice, dest, cookies_browser, multi_item=is_multi_item)
+    ydl_opts = _build_ydl_opts(
+        choice, dest, cookies_browser, multi_item=is_multi_item, force_single_item=force_single_item
+    )
 
     attempt = 0
     start_time = time.time()
@@ -270,6 +287,7 @@ def _build_ydl_opts(
     dest: Path,
     cookies_browser: str | None = None,
     multi_item: bool = False,
+    force_single_item: bool = False,
 ) -> dict:
     if multi_item:
         # Sisipkan index unik di nama file, biar tiap entry carousel/galeri
@@ -295,6 +313,15 @@ def _build_ydl_opts(
         # error "Sign in to confirm you're not a bot" tanpa perlu cookies.
         "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
     }
+
+    if force_single_item:
+        # "noplaylist" TIDAK berefek buat URL playlist murni (tanpa "v=") -
+        # dikonfirmasi maintainer yt-dlp sendiri (issue #5215, "expected
+        # behavior" bukan bug yt-dlp). playlist_items="1" independen dari
+        # noplaylist dan memaksa cuma entry PERTAMA yang diambil, apa pun
+        # kondisinya - ini yang benar-benar mencegah seluruh playlist
+        # kedownload dan saling menimpa nama file yang sama.
+        opts["playlist_items"] = "1"
 
     cookies = build_cookies_from_browser(cookies_browser)
     if cookies:
