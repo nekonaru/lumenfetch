@@ -170,7 +170,9 @@ Buat nutupin celah ini, Lumenfetch otomatis "banting setir" pakai [`instaloader`
 
 - ✅ Reel/video Instagram → tetap lewat `yt-dlp` seperti biasa
 - ✅ Post foto tunggal atau carousel foto → otomatis lewat `instaloader`, muncul opsi format (JPG/PNG/WEBP) dan pilih semua/tertentu seperti biasa
-- ⚠️ Post private yang kamu belum follow, atau butuh login → tetap gagal walau fallback aktif (baik `yt-dlp` maupun `instaloader` sama-sama butuh sesi login buat itu; coba fitur **Cookies dari Browser** di atas)
+- ✅ Carousel campuran (foto + video dalam satu post) → foto dan video-nya sama-sama disertakan, bukan cuma foto-nya doang
+- ✅ Fitur **Cookies dari Browser** berlaku juga di jalur `instaloader` ini (butuh package tambahan `browser_cookie3`, sudah otomatis ter-install lewat `requirements.txt`) - kalau post-nya butuh login (mis. akun private yang sudah kamu follow), aktifkan cookies dan itu beneran kepakai buat foto Instagram juga, bukan cuma buat video lewat `yt-dlp`
+- ⚠️ Post private yang kamu **belum** follow tetap gagal walau cookies aktif - itu Instagram yang sengaja nutup akses, bukan keterbatasan Lumenfetch
 - 🔄 Carousel dengan banyak foto: tiap foto didownload independen. Kalau ada 1-2 foto yang gagal (mis. koneksi putus), yang lain tetap lanjut dan hasilnya dilaporkan apa adanya (mis. "3/5 gambar berhasil"), bukan dianggap gagal total ataupun disamarkan jadi sukses penuh
 
 ## 📐 Estimasi Ukuran & Waktu Download

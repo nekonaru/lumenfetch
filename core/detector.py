@@ -140,7 +140,7 @@ def detect(url: str, cookies_browser: str | None = None) -> DetectedContent:
             from core import instagram_fallback  # noqa: PLC0415 - lazy import, hindari circular import
 
             if instagram_fallback.is_instagram_url(url):
-                return instagram_fallback.detect_photo(url)
+                return instagram_fallback.detect_photo(url, cookies_browser=cookies_browser)
             raise DetectionError("Konten ini tidak berisi video yang bisa didownload") from e
         if "private" in msg or "login" in msg or "unavailable" in msg:
             raise DetectionError("Konten ini private / tidak bisa diakses") from e

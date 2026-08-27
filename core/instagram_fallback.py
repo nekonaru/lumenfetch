@@ -29,7 +29,40 @@ def extract_shortcode(url: str) -> str | None:
     return match.group(1) if match else None
 
 
-def detect_photo(url: str):
+def _load_cookies_from_browser(loader: instaloader.Instaloader, browser: str) -> None:
+    """
+    Muat cookies Instagram dari browser ke session instaloader, biar bisa
+    akses post yang butuh login (mis. akun private yang sudah kamu follow).
+    Meniru cara instaloader CLI sendiri (--load-cookies), tapi tanpa
+    test_login()/print (itu CLI-specific) karena instaloader dipakai
+    sebagai library di sini, bukan command-line tool-nya.
+
+    Fitur cookies sifatnya best-effort - gagal diam-diam (bukan raise) kalau
+    browser_cookie3 belum terinstall, browser-nya tidak didukung, atau
+    memang belum ada cookie Instagram di browser itu (mis. belum pernah
+    login). Ini konsisten sama filosofi "cookies itu opsional" yang sudah
+    dipakai di jalur yt-dlp (lihat build_cookies_from_browser di utils.py).
+    """
+    try:
+        import browser_cookie3
+    except ImportError:
+        return
+
+    browser_fn = getattr(browser_cookie3, browser, None)
+    if browser_fn is None:
+        return
+
+    try:
+        browser_cookies = list(browser_fn())
+    except Exception:  # noqa: BLE001
+        return
+
+    cookies = {c.name: c.value for c in browser_cookies if "instagram" in c.domain}
+    if cookies:
+        loader.context.update_cookies(cookies)
+
+
+def detect_photo(url: str, cookies_browser: str | None = None):
     """
     Ambil metadata post foto Instagram (single/carousel) via instaloader.
     Return DetectedContent (didefinisikan lazy-import biar tidak circular import
@@ -51,6 +84,13 @@ def detect_photo(url: str):
             save_metadata=False,
             quiet=True,
         )
+        if cookies_browser and cookies_browser != "none":
+            # Sebelum ini ditambahkan, fitur "Cookies dari Browser" di menu
+            # settings DIAM-DIAM TIDAK BERLAKU buat jalur foto Instagram
+            # (satu-satunya alasan fallback instaloader ini ada) - padahal
+            # README & menu settings sendiri bilang fitur ini "terutama buat
+            # Instagram". Post foto private tetap gagal walau cookies aktif.
+            _load_cookies_from_browser(loader, cookies_browser)
         post = instaloader.Post.from_shortcode(loader.context, shortcode)
     except instaloader.exceptions.LoginRequiredException as e:
         raise DetectionError("Konten ini private / tidak bisa diakses") from e

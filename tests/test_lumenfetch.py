@@ -720,6 +720,168 @@ def test_download_photos_cleans_up_partial_file_on_failure(tmp_path, monkeypatch
 
 
 # ---------------------------------------------------------------------------
+# instagram_fallback._load_cookies_from_browser / detect_photo cookies_browser
+# ---------------------------------------------------------------------------
+
+def test_load_cookies_from_browser_filters_instagram_domain_only(monkeypatch):
+    """
+    Regresi bug: fitur "Cookies dari Browser" di menu settings DIAM-DIAM
+    TIDAK BERLAKU buat jalur foto Instagram (satu-satunya alasan fallback
+    instaloader ini ada) - README & menu settings sendiri bilang fitur ini
+    "terutama buat Instagram", tapi post foto private tetap gagal walau
+    cookies aktif. Sekarang cookies beneran dimuat ke session instaloader,
+    dan cuma cookies domain instagram yang dipakai (bukan semua cookies
+    browser, mis. dari Facebook/domain lain).
+    """
+
+    class FakeCookie:
+        def __init__(self, domain, name, value):
+            self.domain = domain
+            self.name = name
+            self.value = value
+
+    fake_cookies = [
+        FakeCookie(".instagram.com", "sessionid", "abc123"),
+        FakeCookie(".instagram.com", "csrftoken", "xyz789"),
+        FakeCookie(".facebook.com", "other_cookie", "harus-terfilter"),
+    ]
+
+    fake_loader = mock.MagicMock()
+    fake_module = mock.MagicMock(chrome=lambda: fake_cookies)
+    monkeypatch.setitem(__import__("sys").modules, "browser_cookie3", fake_module)
+
+    instagram_fallback._load_cookies_from_browser(fake_loader, "chrome")
+
+    cookies_passed = fake_loader.context.update_cookies.call_args[0][0]
+    assert cookies_passed == {"sessionid": "abc123", "csrftoken": "xyz789"}
+
+
+def test_load_cookies_from_browser_fails_safely_when_library_missing(monkeypatch):
+    """browser_cookie3 belum terinstall -> gagal diam-diam, bukan crash (fitur cookies itu opsional)."""
+    import builtins
+
+    fake_loader = mock.MagicMock()
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "browser_cookie3":
+            raise ImportError("no module named browser_cookie3")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    instagram_fallback._load_cookies_from_browser(fake_loader, "chrome")  # TIDAK BOLEH raise
+
+    assert not fake_loader.context.update_cookies.called
+
+
+def test_load_cookies_from_browser_fails_safely_when_browser_read_fails(monkeypatch):
+    """Browser belum pernah login Instagram / gagal dibaca -> gagal diam-diam, bukan crash."""
+
+    def failing_chrome():
+        raise Exception("gagal baca cookies chrome")
+
+    fake_loader = mock.MagicMock()
+    fake_module = mock.MagicMock(chrome=failing_chrome)
+    monkeypatch.setitem(__import__("sys").modules, "browser_cookie3", fake_module)
+
+    instagram_fallback._load_cookies_from_browser(fake_loader, "chrome")  # TIDAK BOLEH raise
+
+    assert not fake_loader.context.update_cookies.called
+
+
+def test_load_cookies_from_browser_skips_unsupported_browser(monkeypatch):
+    fake_loader = mock.MagicMock()
+    fake_module = mock.MagicMock(spec=["chrome"])  # cuma punya atribut "chrome"
+    monkeypatch.setitem(__import__("sys").modules, "browser_cookie3", fake_module)
+
+    instagram_fallback._load_cookies_from_browser(fake_loader, "browser-aneh-tidak-didukung")
+
+    assert not fake_loader.context.update_cookies.called
+
+
+def test_detect_photo_passes_cookies_browser_to_loader(monkeypatch):
+    """Test integrasi: detect_photo() harus benar-benar memanggil _load_cookies_from_browser saat cookies_browser diset."""
+
+    class FakePost:
+        typename = "GraphImage"
+        caption = "Judul"
+        owner_username = "user"
+        is_video = False
+        url = "https://cdn/foto.jpg"
+
+    monkeypatch.setattr(instagram_fallback.instaloader, "Instaloader", lambda **kwargs: mock.MagicMock())
+    monkeypatch.setattr(instagram_fallback.instaloader.Post, "from_shortcode", lambda ctx, sc: FakePost())
+
+    captured = {}
+
+    def fake_load_cookies(loader, browser):
+        captured["browser"] = browser
+
+    monkeypatch.setattr(instagram_fallback, "_load_cookies_from_browser", fake_load_cookies)
+
+    instagram_fallback.detect_photo("https://www.instagram.com/p/ABC123/", cookies_browser="chrome")
+
+    assert captured.get("browser") == "chrome"
+
+
+def test_detect_photo_skips_cookie_loading_when_none(monkeypatch):
+    class FakePost:
+        typename = "GraphImage"
+        caption = "Judul"
+        owner_username = "user"
+        is_video = False
+        url = "https://cdn/foto.jpg"
+
+    monkeypatch.setattr(instagram_fallback.instaloader, "Instaloader", lambda **kwargs: mock.MagicMock())
+    monkeypatch.setattr(instagram_fallback.instaloader.Post, "from_shortcode", lambda ctx, sc: FakePost())
+
+    called = []
+    monkeypatch.setattr(instagram_fallback, "_load_cookies_from_browser", lambda loader, browser: called.append(browser))
+
+    instagram_fallback.detect_photo("https://www.instagram.com/p/ABC123/", cookies_browser=None)
+    instagram_fallback.detect_photo("https://www.instagram.com/p/ABC123/", cookies_browser="none")
+
+    assert called == []
+
+
+def test_detector_passes_cookies_browser_to_instagram_fallback(monkeypatch):
+    """
+    Test integrasi end-to-end: detector.detect() harus benar-benar meneruskan
+    cookies_browser sampai ke instagram_fallback.detect_photo(), bukan
+    hilang di tengah jalan (bug asli yang dilaporkan).
+    """
+    from core import detector
+
+    class FakeYDL:
+        def __init__(self, opts):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def extract_info(self, url, download=False):
+            raise detector.yt_dlp.utils.DownloadError("There is no video in this post")
+
+    monkeypatch.setattr(detector.yt_dlp, "YoutubeDL", FakeYDL)
+
+    captured = {}
+
+    def fake_detect_photo(url, cookies_browser=None):
+        captured["cookies_browser"] = cookies_browser
+        return mock.MagicMock()
+
+    monkeypatch.setattr(instagram_fallback, "detect_photo", fake_detect_photo)
+
+    detector.detect("https://www.instagram.com/p/ABC123/", cookies_browser="firefox")
+
+    assert captured.get("cookies_browser") == "firefox"
+
+
+# ---------------------------------------------------------------------------
 # instagram_fallback.detect_photo - carousel campuran (foto+video)
 # ---------------------------------------------------------------------------
 

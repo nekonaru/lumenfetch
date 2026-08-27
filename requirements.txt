@@ -3,3 +3,4 @@ rich
 pyperclip
 static-ffmpeg
 instaloader
+browser_cookie3
