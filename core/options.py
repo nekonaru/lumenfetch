@@ -25,6 +25,12 @@ AUDIO_FORMATS = ["MP3", "M4A", "WAV", "FLAC"]
 AUDIO_QUALITIES = ["Best", "320kbps", "192kbps", "128kbps"]
 IMAGE_FORMATS = ["JPG", "PNG", "WEBP"]
 
+# WAV (PCM mentah) dan FLAC (lossless compression) tidak punya konsep
+# "target bitrate" kayak MP3/M4A - nawarin pilihan 320/192/128kbps buat
+# format ini cuma membingungkan user, karena pilihannya gak beneran ngefek
+# ke hasil akhir (ffmpeg mengabaikan preferredquality untuk codec lossless).
+LOSSLESS_AUDIO_FORMATS = {"wav", "flac"}
+
 
 @dataclass
 class DownloadChoice:
@@ -157,6 +163,12 @@ def ask_video_choice(content: DetectedContent | None = None, avg_speed_bps: floa
 
 def ask_audio_choice(content: DetectedContent | None = None, avg_speed_bps: float | None = None) -> DownloadChoice:
     fmt = _select_from_list("Pilih Format:", AUDIO_FORMATS, default_index=0)
+    fmt_lower = fmt.lower()
+
+    if fmt_lower in LOSSLESS_AUDIO_FORMATS:
+        # Lossless (WAV/FLAC) gak punya "target bitrate" - langsung pakai
+        # kualitas terbaik yang ada, tanpa nanya pilihan yang gak relevan.
+        return DownloadChoice(output_kind="audio", quality="Best", fmt=fmt_lower)
 
     extra = None
     if content is not None:
@@ -164,7 +176,7 @@ def ask_audio_choice(content: DetectedContent | None = None, avg_speed_bps: floa
         extra = _build_size_labels(formats, AUDIO_QUALITIES, content.duration, avg_speed_bps, estimate_audio_size_bytes)
 
     quality = _select_from_list("Pilih Quality:", AUDIO_QUALITIES, default_index=0, extra=extra)
-    return DownloadChoice(output_kind="audio", quality=quality, fmt=fmt.lower())
+    return DownloadChoice(output_kind="audio", quality=quality, fmt=fmt_lower)
 
 
 def ask_image_choice(content: DetectedContent, is_video_thumbnail: bool = False) -> DownloadChoice:

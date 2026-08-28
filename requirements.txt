@@ -1,3 +1,8 @@
+# Sengaja TIDAK di-pin versinya (misal "yt-dlp==2026.1.1") - platform kayak
+# YouTube/TikTok/Instagram sering ubah sistem mereka, dan yt-dlp/instaloader
+# perlu update rutin buat tetap kompatibel (lihat core/update_checker.py).
+# Nge-pin versi lama justru bikin bug lama (403, error ekstraksi, dll) balik
+# lagi. Selalu jalankan "pip install --upgrade yt-dlp" secara berkala.
 yt-dlp
 rich
 pyperclip
