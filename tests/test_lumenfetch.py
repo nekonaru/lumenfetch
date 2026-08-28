@@ -800,6 +800,66 @@ def test_load_cookies_from_browser_skips_unsupported_browser(monkeypatch):
     assert not fake_loader.context.update_cookies.called
 
 
+def test_load_cookies_from_browser_calls_test_login(monkeypatch):
+    """
+    Regresi: update_cookies() doang TIDAK CUKUP - instaloader.context.is_logged_in
+    didefinisikan sebagai bool(self.username), yang cuma keisi lewat
+    test_login(). Tanpa manggil ini, cookies valid tetap bikin is_logged_in
+    False selamanya, dan instaloader punya pengecekan is_logged_in di jalur
+    redirect handling yang bisa langsung raise LoginRequiredException kalau
+    Instagram redirect ke halaman login - persis kondisi gagal yang fitur
+    cookies ini coba selesaikan.
+    """
+    fake_loader = mock.MagicMock()
+    fake_loader.context.test_login.return_value = "username_dari_cookies"
+
+    fake_cookies = [type("C", (), {"domain": ".instagram.com", "name": "sessionid", "value": "abc"})()]
+    fake_module = mock.MagicMock(chrome=lambda: fake_cookies)
+    monkeypatch.setitem(__import__("sys").modules, "browser_cookie3", fake_module)
+
+    instagram_fallback._load_cookies_from_browser(fake_loader, "chrome")
+
+    fake_loader.context.test_login.assert_called_once()
+    assert fake_loader.context.username == "username_dari_cookies"
+
+
+def test_load_cookies_from_browser_sets_is_logged_in_true_with_real_instaloader():
+    """
+    Test end-to-end pakai objek instaloader.InstaloaderContext ASLI (bukan
+    MagicMock) - biar bug regresinya kena tangkap beneran kalau kejadian
+    lagi. MagicMock otomatis bikin semua atribut "ada" jadi truthy, jadi
+    gak bakal ketauan kalau context.username lupa di-set - tes ini pakai
+    context yang beneran punya property is_logged_in = bool(self.username).
+    """
+    import instaloader
+
+    loader = instaloader.Instaloader(quiet=True)
+    assert loader.context.is_logged_in is False  # kondisi awal sebelum cookies dimuat
+
+    fake_cookies = [type("C", (), {"domain": ".instagram.com", "name": "sessionid", "value": "abc"})()]
+
+    with mock.patch.dict("sys.modules", {"browser_cookie3": mock.MagicMock(chrome=lambda: fake_cookies)}):
+        with mock.patch.object(loader.context, "test_login", return_value="username_asli"):
+            instagram_fallback._load_cookies_from_browser(loader, "chrome")
+
+    assert loader.context.username == "username_asli"
+    assert loader.context.is_logged_in is True
+
+
+def test_load_cookies_from_browser_test_login_failure_does_not_crash(monkeypatch):
+    """test_login() gagal (mis. rate-limit/connection error sesaat) tidak boleh menggagalkan seluruh proses - cookies tetap dipakai apa adanya."""
+    fake_loader = mock.MagicMock()
+    fake_loader.context.test_login.side_effect = Exception("rate limited")
+
+    fake_cookies = [type("C", (), {"domain": ".instagram.com", "name": "sessionid", "value": "abc"})()]
+    fake_module = mock.MagicMock(chrome=lambda: fake_cookies)
+    monkeypatch.setitem(__import__("sys").modules, "browser_cookie3", fake_module)
+
+    instagram_fallback._load_cookies_from_browser(fake_loader, "chrome")  # TIDAK BOLEH raise
+
+    fake_loader.context.update_cookies.assert_called_once()  # cookies tetap ke-suntik meski test_login gagal
+
+
 def test_detect_photo_passes_cookies_browser_to_loader(monkeypatch):
     """Test integrasi: detect_photo() harus benar-benar memanggil _load_cookies_from_browser saat cookies_browser diset."""
 

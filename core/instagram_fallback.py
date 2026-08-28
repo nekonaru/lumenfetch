@@ -33,15 +33,22 @@ def _load_cookies_from_browser(loader: instaloader.Instaloader, browser: str) ->
     """
     Muat cookies Instagram dari browser ke session instaloader, biar bisa
     akses post yang butuh login (mis. akun private yang sudah kamu follow).
-    Meniru cara instaloader CLI sendiri (--load-cookies), tapi tanpa
-    test_login()/print (itu CLI-specific) karena instaloader dipakai
-    sebagai library di sini, bukan command-line tool-nya.
+    Meniru cara instaloader CLI sendiri (--load-cookies / import_session di
+    __main__.py), TERMASUK memanggil test_login() sesudah update_cookies().
 
-    Fitur cookies sifatnya best-effort - gagal diam-diam (bukan raise) kalau
-    browser_cookie3 belum terinstall, browser-nya tidak didukung, atau
-    memang belum ada cookie Instagram di browser itu (mis. belum pernah
-    login). Ini konsisten sama filosofi "cookies itu opsional" yang sudah
-    dipakai di jalur yt-dlp (lihat build_cookies_from_browser di utils.py).
+    Ini bukan langkah kosmetik: instaloader.context.is_logged_in didefinisikan
+    sebagai `bool(self.username)` - kalau cuma update_cookies() dipanggil
+    tanpa test_login(), cookies-nya beneran ke-suntik ke session tapi
+    is_logged_in TETAP False selamanya. Instaloader punya pengecekan
+    is_logged_in di jalur redirect handling (instaloadercontext.py):
+    kalau Instagram redirect ke halaman login, is_logged_in yang False bikin
+    LoginRequiredException langsung dilempar - persis kondisi gagal yang
+    fitur cookies ini coba selesaikan, walau cookies-nya sendiri valid.
+
+    Beda dari instaloader CLI, di sini test_login() dibungkus try/except -
+    gagal cek status login (mis. rate-limit sesaat) TIDAK BOLEH bikin
+    seluruh proses deteksi gagal; cookies yang sudah disuntik tetap dipakai
+    apa adanya buat request berikutnya.
     """
     try:
         import browser_cookie3
@@ -58,8 +65,17 @@ def _load_cookies_from_browser(loader: instaloader.Instaloader, browser: str) ->
         return
 
     cookies = {c.name: c.value for c in browser_cookies if "instagram" in c.domain}
-    if cookies:
-        loader.context.update_cookies(cookies)
+    if not cookies:
+        return
+
+    loader.context.update_cookies(cookies)
+
+    try:
+        username = loader.context.test_login()
+        if username:
+            loader.context.username = username
+    except Exception:  # noqa: BLE001
+        pass  # cookies tetap kepakai apa adanya walau pengecekan status login gagal
 
 
 def detect_photo(url: str, cookies_browser: str | None = None):
