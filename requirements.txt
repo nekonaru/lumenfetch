@@ -3,6 +3,15 @@
 # perlu update rutin buat tetap kompatibel (lihat core/update_checker.py).
 # Nge-pin versi lama justru bikin bug lama (403, error ekstraksi, dll) balik
 # lagi. Selalu jalankan "pip install --upgrade yt-dlp" secara berkala.
+#
+# Ketergantungan inti (wajib): yt-dlp, rich.
+# Sisanya opsional - aplikasi tetap jalan tanpa mereka (degraded gracefully):
+# - pyperclip: auto-paste clipboard (tanpanya, paste manual)
+# - static-ffmpeg: ffmpeg bundled (tanpanya, video/audio & convert gambar gagal
+#   dengan pesan ramah, tapi deteksi & download gambar tunggal tetap jalan)
+# - instaloader: fallback foto Instagram (tanpanya, post foto IG lapor pesan
+#   install, reel/video IG tetap jalan via yt-dlp)
+# - browser-cookie3: cookies dari browser (tanpanya, fitur cookies nonaktif)
 yt-dlp
 rich
 pyperclip

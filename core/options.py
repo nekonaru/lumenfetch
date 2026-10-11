@@ -14,22 +14,30 @@ from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
+from core.constants import (
+    AUDIO_FORMATS,
+    AUDIO_QUALITIES,
+    IMAGE_FORMATS,
+    LOSSLESS_AUDIO_FORMATS,
+    VERSION,
+    VIDEO_FORMATS,
+    VIDEO_QUALITIES,
+)
 from core.detector import DetectedContent
 from core.utils import estimate_audio_size_bytes, estimate_video_size_bytes, format_duration, format_eta, format_size
 
 console = Console()
 
-VIDEO_QUALITIES = ["Best", "1080p", "720p", "480p", "360p", "Worst"]
-VIDEO_FORMATS = ["MP4", "WEBM", "MKV"]
-AUDIO_FORMATS = ["MP3", "M4A", "WAV", "FLAC"]
-AUDIO_QUALITIES = ["Best", "320kbps", "192kbps", "128kbps"]
-IMAGE_FORMATS = ["JPG", "PNG", "WEBP"]
-
-# WAV (PCM mentah) dan FLAC (lossless compression) tidak punya konsep
-# "target bitrate" kayak MP3/M4A - nawarin pilihan 320/192/128kbps buat
-# format ini cuma membingungkan user, karena pilihannya gak beneran ngefek
-# ke hasil akhir (ffmpeg mengabaikan preferredquality untuk codec lossless).
-LOSSLESS_AUDIO_FORMATS = {"wav", "flac"}
+# Re-export agar test / kode lama yang akses options.VIDEO_QUALITIES tetap jalan.
+__all__ = [
+    "DownloadChoice",
+    "VIDEO_QUALITIES",
+    "VIDEO_FORMATS",
+    "AUDIO_FORMATS",
+    "AUDIO_QUALITIES",
+    "IMAGE_FORMATS",
+    "LOSSLESS_AUDIO_FORMATS",
+]
 
 
 @dataclass
@@ -41,11 +49,10 @@ class DownloadChoice:
     is_video_thumbnail: bool = False  # True kalau ini "Gambar (thumbnail)" dari menu VIDEO
 
 
-def show_header(version: str = "1.0.0") -> None:
+def show_header(version: str = VERSION) -> None:
     console.print(
         Panel.fit(
-            f"[bold cyan]Lumenfetch[/bold cyan]  v{version}\n"
-            "[dim]Powered by yt-dlp[/dim]",
+            f"[bold cyan]Lumenfetch[/bold cyan]  v{version}\n[dim]Powered by yt-dlp[/dim]",
             border_style="cyan",
         )
     )
@@ -108,10 +115,10 @@ def _select_from_list(
 
     raw = Prompt.ask("→", default=str(default_index + 1))
     try:
-        idx = int(raw) - 1
+        idx = int(str(raw).strip()) - 1
         if 0 <= idx < len(choices):
             return choices[idx]
-    except ValueError:
+    except (ValueError, TypeError):
         pass
     return choices[default_index]
 
@@ -123,7 +130,7 @@ def ask_output_type_for_video() -> str:
     console.print("  [3] Gambar (thumbnail)")
     raw = Prompt.ask("→", default="1")
     mapping = {"1": "video", "2": "audio", "3": "image"}
-    return mapping.get(raw.strip(), "video")
+    return mapping.get(str(raw).strip(), "video")
 
 
 def _build_size_labels(
@@ -179,6 +186,21 @@ def ask_audio_choice(content: DetectedContent | None = None, avg_speed_bps: floa
     return DownloadChoice(output_kind="audio", quality=quality, fmt=fmt_lower)
 
 
+def _parse_image_selection(raw: str, total: int) -> list[int] | None:
+    """Parse '1,3,5' (1-indexed) jadi indices 0-indexed yang valid. None = semua."""
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    # Dukung koma, spasi, dan campuran ("1, 2 3").
+    parts = raw.replace(",", " ").split()
+    try:
+        parsed = [int(p) - 1 for p in parts if p]
+    except ValueError:
+        return None
+    valid = [i for i in parsed if 0 <= i < total]
+    return valid or None
+
+
 def ask_image_choice(content: DetectedContent, is_video_thumbnail: bool = False) -> DownloadChoice:
     fmt = _select_from_list("Pilih Format:", IMAGE_FORMATS, default_index=0)
     choice = DownloadChoice(output_kind="image", fmt=fmt.lower(), is_video_thumbnail=is_video_thumbnail)
@@ -188,32 +210,13 @@ def ask_image_choice(content: DetectedContent, is_video_thumbnail: bool = False)
         console.print(f"  [1] Download semua ({len(content.entries)} gambar)")
         console.print("  [2] Pilih tertentu")
         raw = Prompt.ask("→", default="1")
-        if raw.strip() == "2":
+        if str(raw).strip() == "2":
             nums = Prompt.ask("Nomor gambar (contoh: 1,3,5) [dim](kosongkan = semua)[/dim]", default="")
-            nums = nums.strip()
-            if not nums:
-                choice.selected_indices = None  # kosong / enter doang -> download semua
-            else:
-                try:
-                    parsed = [int(n.strip()) - 1 for n in nums.split(",") if n.strip()]
-                except ValueError:
-                    parsed = None
-
-                if parsed is None:
-                    choice.selected_indices = None
-                else:
-                    # Nomor yang di luar jangkauan (mis. entries cuma 5 tapi
-                    # user ketik "99") disaring dulu, biar gak diam-diam
-                    # jadi "0 gambar terdownload" - konsisten sama fallback
-                    # yang sudah ada di instagram_fallback.py.
-                    valid = [i for i in parsed if 0 <= i < len(content.entries)]
-                    if not valid:
-                        console.print(
-                            "[yellow]Nomor yang dimasukkan tidak valid - download semua gambar sebagai gantinya.[/yellow]"
-                        )
-                        choice.selected_indices = None
-                    else:
-                        choice.selected_indices = valid
+            selected = _parse_image_selection(nums, len(content.entries))
+            if selected is None and (nums or "").strip():
+                # User ketik sesuatu tapi semuanya invalid (mis. "99").
+                console.print("[yellow]Nomor yang dimasukkan tidak valid - download semua gambar sebagai gantinya.[/yellow]")
+            choice.selected_indices = selected
     return choice
 
 
@@ -257,14 +260,16 @@ def show_history_table(history: list[dict]) -> None:
         table.add_column(col)
 
     for i, entry in enumerate(history, start=1):
+        if not isinstance(entry, dict):
+            continue
         status = "✅" if entry.get("success") else "❌"
         table.add_row(
             str(i),
-            entry.get("date", "-"),
-            entry.get("platform", "-"),
-            (entry.get("title", "-") or "-")[:40],
-            entry.get("format", "-"),
-            entry.get("size", "-"),
+            str(entry.get("date") or "-"),
+            str(entry.get("platform") or "-"),
+            str(entry.get("title") or "-")[:40],
+            str(entry.get("format") or "-"),
+            str(entry.get("size") or "-"),
             status,
         )
     console.print(table)
@@ -308,21 +313,21 @@ def show_settings_menu(config: dict) -> str:
     return Prompt.ask("→", default="7")
 
 
-def ask_cookies_browser() -> str:
+def ask_cookies_browser() -> str | None:
     """Minta user pilih browser buat ambil cookies (buat konten yang butuh login)."""
     console.print(
         "\n[dim]Dipakai buat konten yang minta login (misal Instagram).[/dim]\n"
         "[dim]Pastikan kamu sudah login ke platform tersebut di browser pilihanmu.[/dim]"
     )
     labels = ["Nonaktifkan", "Chrome", "Firefox", "Edge", "Brave", "Opera", "Vivaldi", "Safari"]
-    values = ["none", "chrome", "firefox", "edge", "brave", "opera", "vivaldi", "safari"]
+    values: list[str | None] = [None, "chrome", "firefox", "edge", "brave", "opera", "vivaldi", "safari"]
     for i, label in enumerate(labels):
         console.print(f"  [{i + 1}] {label}")
     raw = Prompt.ask("→", default="1")
     try:
-        idx = int(raw) - 1
+        idx = int(str(raw).strip()) - 1
         if 0 <= idx < len(values):
             return values[idx]
-    except ValueError:
+    except (ValueError, TypeError):
         pass
-    return "none"
+    return None

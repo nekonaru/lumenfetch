@@ -12,13 +12,19 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import yt_dlp
 
+from core.errors import DetectionError, detection_message
 from core.utils import build_cookies_from_browser
 
+# Re-export agar `from core.detector import DetectionError` tetap jalan.
+__all__ = [
+    "DetectionError",
+    "DetectedContent",
+    "is_valid_url",
+    "strip_playlist_context",
+    "detect",
+]
+
 URL_PATTERN = re.compile(r"^https?://[^\s]+$", re.IGNORECASE)
-
-
-class DetectionError(Exception):
-    """Error ramah untuk ditampilkan ke user (bukan traceback mentah)."""
 
 
 @dataclass
@@ -33,6 +39,8 @@ class DetectedContent:
 
 
 def is_valid_url(text: str) -> bool:
+    if not isinstance(text, str):
+        return False
     return bool(URL_PATTERN.match(text.strip()))
 
 
@@ -63,8 +71,13 @@ def _guess_content_type(info: dict) -> str:
 
 
 def _looks_like_image(entry: dict) -> bool:
+    if not isinstance(entry, dict):
+        return False
     ext = (entry.get("ext") or "").lower()
-    return ext in {"jpg", "jpeg", "png", "webp"} or entry.get("vcodec") == "none" and not entry.get("duration")
+    if ext in {"jpg", "jpeg", "png", "webp"}:
+        return True
+    # Tanda kurung eksplisit: (vcodec none) DAN (tanpa durasi).
+    return (entry.get("vcodec") == "none") and (not entry.get("duration"))
 
 
 def strip_playlist_context(url: str) -> str:
@@ -87,13 +100,15 @@ def strip_playlist_context(url: str) -> str:
     karena mereka tidak pernah punya parameter "list" di URL-nya.
     """
     parts = urlsplit(url)
-    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    # Preserve urutan & duplikat: kerja di level list, bukan dict.
+    pairs = parse_qsl(parts.query, keep_blank_values=True)
 
-    if "list" not in query:
+    if not any(k == "list" for k, _ in pairs):
         return url
 
+    query_dict = dict(pairs)
     has_specific_video = (
-        "v" in query
+        "v" in query_dict
         or "/shorts/" in parts.path
         or "/embed/" in parts.path
         # youtu.be/<video-id> - video ID-nya ada di PATH, bukan di query "v=".
@@ -106,10 +121,18 @@ def strip_playlist_context(url: str) -> str:
     if not has_specific_video:
         return url  # kemungkinan besar ini memang link playlist murni, biarkan apa adanya
 
-    query.pop("list", None)
-    query.pop("index", None)
-    new_query = urlencode(query)
+    filtered = [(k, v) for k, v in pairs if k not in ("list", "index")]
+    new_query = urlencode(filtered)
     return urlunsplit((parts.scheme, parts.netloc, parts.path, new_query, parts.fragment))
+
+
+def _base_ydl_opts() -> dict:
+    """Opsi yt-dlp dasar yang dipakai bersama detector & downloader."""
+    return {
+        "quiet": True,
+        "no_warnings": True,
+        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+    }
 
 
 def detect(url: str, cookies_browser: str | None = None) -> DetectedContent:
@@ -119,13 +142,13 @@ def detect(url: str, cookies_browser: str | None = None) -> DetectedContent:
 
     url = strip_playlist_context(url)
 
-    ydl_opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-        "noplaylist": False,
-        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
-    }
+    ydl_opts = _base_ydl_opts()
+    ydl_opts.update(
+        {
+            "skip_download": True,
+            "noplaylist": False,
+        }
+    )
 
     cookies = build_cookies_from_browser(cookies_browser)
     if cookies:
@@ -137,20 +160,14 @@ def detect(url: str, cookies_browser: str | None = None) -> DetectedContent:
     except yt_dlp.utils.DownloadError as e:
         msg = str(e).lower()
         if "there is no video in this post" in msg or "no video formats" in msg:
-            from core import instagram_fallback  # noqa: PLC0415 - lazy import, hindari circular import
+            # Lazy import: hindari circular import + hindari load
+            # instaloader yang berat kalau tidak dibutuhkan.
+            from core import instagram_fallback  # noqa: PLC0415
 
             if instagram_fallback.is_instagram_url(url):
                 return instagram_fallback.detect_photo(url, cookies_browser=cookies_browser)
             raise DetectionError("Konten ini tidak berisi video yang bisa didownload") from e
-        if "private" in msg or "login" in msg or "unavailable" in msg:
-            raise DetectionError("Konten ini private / tidak bisa diakses") from e
-        if "unsupported url" in msg:
-            raise DetectionError("URL tidak valid atau tidak didukung") from e
-        if "429" in msg or "too many requests" in msg or "rate-limit" in msg or "rate limit" in msg:
-            raise DetectionError("Terlalu banyak request ke platform ini - tunggu sebentar lalu coba lagi") from e
-        if "removed" in msg or "deleted" in msg or "no longer available" in msg:
-            raise DetectionError("Konten ini sudah dihapus / tidak lagi tersedia") from e
-        raise DetectionError("Koneksi internet bermasalah, coba lagi") from e
+        raise DetectionError(detection_message(e)) from e
     except Exception as e:  # noqa: BLE001
         raise DetectionError("URL tidak valid atau tidak didukung") from e
 
@@ -158,7 +175,10 @@ def detect(url: str, cookies_browser: str | None = None) -> DetectedContent:
         raise DetectionError("URL tidak valid atau tidak didukung")
 
     content_type = _guess_content_type(info)
-    entries = info.get("entries") or []
+    raw_entries = info.get("entries") or []
+    # Hindari duplikasi list besar: kalau sudah list, pakai langsung
+    # ( referensi ), kalau generator/iterable lain baru materialize.
+    entries = raw_entries if isinstance(raw_entries, list) else list(raw_entries)
 
     return DetectedContent(
         url=url,
@@ -166,6 +186,6 @@ def detect(url: str, cookies_browser: str | None = None) -> DetectedContent:
         title=info.get("title") or info.get("id") or "untitled",
         content_type=content_type,
         duration=info.get("duration"),
-        entries=list(entries),
+        entries=entries,
         raw_info=info,
     )

@@ -249,6 +249,8 @@ Preferensi kamu (folder simpan, max retry, auto-paste, naming template, cookies 
 lumenfetch/
 ├── main.py                    # Entry point & loop utama
 ├── core/
+│   ├── constants.py           # Single source of truth (versi, daftar format, batas)
+│   ├── errors.py              # Taxonomy error terpusat (klasifikasi + pesan ramah)
 │   ├── downloader.py          # Logic download (yt-dlp API) + progress hook + retry
 │   ├── detector.py            # Deteksi platform & tipe konten
 │   ├── options.py             # Menu & prompt interaktif (rich)
@@ -264,13 +266,15 @@ lumenfetch/
 ├── config.json                # Preferensi user (auto-generate, tidak di-commit)
 ├── requirements.txt
 ├── requirements-dev.txt       # Dependency tambahan untuk development (pytest, ruff)
-├── pyproject.toml             # Konfigurasi ruff
+├── pyproject.toml             # Metadata project + konfigurasi ruff
 ├── CONTRIBUTING.md
 ├── LICENSE
 └── README.md
 ```
 
 **Prinsip pemisahan modul:**
+- `constants.py` - nilai shared (versi, format, batas) biar tidak drift antar modul
+- `errors.py` - klasifikasi error terpusat, dipakai detector & downloader bersama
 - `detector.py` - murni deteksi info konten, tidak mendownload apa pun
 - `downloader.py` - murni proses download & progress, tidak menampilkan menu
 - `options.py` - semua interaksi & tampilan menu, tidak ada logic download

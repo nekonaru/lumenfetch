@@ -21,26 +21,49 @@ from rich.progress import (
     TransferSpeedColumn,
 )
 
+from core.constants import EMBEDDABLE_VIDEO_FORMATS
 from core.detector import DetectedContent
+from core.errors import (
+    DownloadCancelled,
+    DownloadFailed,
+    classify_error,
+    friendly_message,
+)
 from core.options import DownloadChoice
-from core.utils import build_cookies_from_browser, build_filename, convert_image, find_indexed_files, resolve_duplicate
+from core.utils import (
+    _iter_dir_files,
+    build_cookies_from_browser,
+    build_filename,
+    convert_image,
+    find_indexed_files,
+    resolve_duplicate,
+)
+
+# Re-export agar import lama tetap jalan.
+__all__ = [
+    "DownloadCancelled",
+    "DownloadFailed",
+    "DownloadResult",
+    "CONNECTION_ERROR_HINTS",
+    "EMBEDDABLE_VIDEO_FORMATS",
+    "download",
+]
 
 console = Console()
 
-CONNECTION_ERROR_HINTS = ("timed out", "timeout", "connection", "network", "temporary failure", "reset by peer")
+# Backward-compat: dulu definisi lokal, sekarang kanonis di constants.
+CONNECTION_ERROR_HINTS = tuple(__import__("core.constants", fromlist=["CONNECTION_ERROR_HINTS"]).CONNECTION_ERROR_HINTS)
 
-# Container video yang didukung EmbedThumbnailPP milik yt-dlp untuk video
-# (subset dari daftar lengkapnya: mp3, mkv/mka, ogg/opus/flac, m4a/mp4/m4v/mov).
-# WEBM sengaja TIDAK dimasukkan karena yt-dlp belum bisa embed thumbnail ke WEBM.
-EMBEDDABLE_VIDEO_FORMATS = {"mp4", "mkv"}
+_HEIGHT_FILTERS = {
+    "Best": "",
+    "1080p": "[height<=1080]",
+    "720p": "[height<=720]",
+    "480p": "[height<=480]",
+    "360p": "[height<=360]",
+    "Worst": "",
+}
 
-
-class DownloadCancelled(Exception):
-    """User cancel download (Ctrl+C)."""
-
-
-class DownloadFailed(Exception):
-    """Error fatal yang gak perlu di-retry (pesan sudah ramah)."""
+_AUDIO_KBPS = {"Best": "0", "320kbps": "320", "192kbps": "192", "128kbps": "128"}
 
 
 @dataclass
@@ -58,30 +81,18 @@ def _quality_to_format_selector(quality: str, ext: str) -> str:
     ffmpeg tinggal remux (gabung) tanpa perlu re-encode ulang. Ini juga
     yang bikin proses gabung audio+video jauh lebih stabil.
     """
-    height_filters = {
-        "Best": "",
-        "1080p": "[height<=1080]",
-        "720p": "[height<=720]",
-        "480p": "[height<=480]",
-        "360p": "[height<=360]",
-        "Worst": "",
-    }
-    hf = height_filters.get(quality, "")
+    hf = _HEIGHT_FILTERS.get(quality, "")
 
     if quality == "Worst":
         return f"worstvideo*{hf}+worstaudio/worst{hf}"
 
     if ext == "mp4":
-        return (
-            f"bestvideo[ext=mp4]{hf}+bestaudio[ext=m4a]/"
-            f"bestvideo*{hf}+bestaudio/best{hf}"
-        )
+        return f"bestvideo[ext=mp4]{hf}+bestaudio[ext=m4a]/bestvideo*{hf}+bestaudio/best{hf}"
     return f"bestvideo*{hf}+bestaudio/best{hf}"
 
 
 def _audio_quality_to_kbps(quality: str) -> str:
-    mapping = {"Best": "0", "320kbps": "320", "192kbps": "192", "128kbps": "128"}
-    return mapping.get(quality, "0")
+    return _AUDIO_KBPS.get(quality, "0")
 
 
 def _make_progress_hook(progress: Progress, task_id):
@@ -91,40 +102,26 @@ def _make_progress_hook(progress: Progress, task_id):
             downloaded = d.get("downloaded_bytes", 0)
             if total:
                 progress.update(task_id, total=total, completed=downloaded)
-            progress.update(task_id, description=d.get("filename", "Downloading")[:40])
+            filename = d.get("filename") or "Downloading"
+            progress.update(task_id, description=filename[:40])
         elif d.get("status") == "finished":
-            progress.update(task_id, completed=progress.tasks[task_id].total or 0)
+            try:
+                total = progress.tasks[task_id].total
+            except (IndexError, AttributeError):
+                total = None
+            if total:
+                progress.update(task_id, completed=total)
 
     return hook
 
 
 def _classify_error(e: Exception) -> str:
-    msg = str(e).lower()
-    if any(hint in msg for hint in CONNECTION_ERROR_HINTS):
-        return "connection"
-    if "private" in msg or "login required" in msg or "unavailable" in msg:
-        return "private"
-    if "requested format is not available" in msg or "no video formats" in msg:
-        return "format"
-    if "no space left" in msg:
-        return "disk"
-    if "429" in msg or "too many requests" in msg or "rate-limit" in msg or "rate limit" in msg:
-        return "rate_limit"
-    if "removed" in msg or "deleted" in msg or "no longer available" in msg:
-        return "removed"
-    return "unknown"
+    """Wrapper kompatibel - logika kanonis di core.errors.classify_error."""
+    return classify_error(e)
 
 
 def _friendly_message(kind: str) -> str:
-    return {
-        "connection": "❌ Koneksi internet bermasalah, coba lagi",
-        "private": "❌ Konten ini private / tidak bisa diakses",
-        "format": "❌ Format tidak tersedia untuk konten ini",
-        "disk": "❌ Tidak cukup ruang disk",
-        "rate_limit": "❌ Terlalu banyak request ke platform ini - tunggu sebentar lalu coba lagi",
-        "removed": "❌ Konten ini sudah dihapus / tidak lagi tersedia",
-        "unknown": "❌ Terjadi kesalahan saat download",
-    }[kind]
+    return friendly_message(kind)
 
 
 def download(
@@ -243,18 +240,32 @@ def _find_result_files(dest: Path, multi_item: bool = False) -> list[Path]:
     if dest.exists():
         return [dest]
 
+    # FIX glob-injection: stem bisa mengandung `[`, `*`, `?` dari judul
+    # asli. Jangan pakai `glob(f"{stem}.*")` mentah - iterdir + filter manual.
     image_exts = {".jpg", ".jpeg", ".png", ".webp"}
-    matches = list(dest.parent.glob(f"{dest.stem}.*"))
-    non_image_matches = [m for m in matches if m.suffix.lower() not in image_exts]
+    stem = dest.stem
+    matches: list[Path] = []
+    non_image_matches: list[Path] = []
+    for p in _iter_dir_files(dest.parent):
+        if not p.is_file():
+            continue
+        if p.stem != stem and not p.name.startswith(stem + "."):
+            continue
+        # Pola "{stem}.*": nama harus persis stem + satu ekstensi.
+        if p.stem != stem:
+            continue
+        matches.append(p)
+        if p.suffix.lower() not in image_exts:
+            non_image_matches.append(p)
 
     # Thumbnail sisa (.jpg/.png/.webp) sengaja diprioritaskan PALING TERAKHIR,
     # karena urutan glob() tidak dijamin dan kalau kebetulan thumbnail-nya yang
     # kepilih duluan, path & ukuran yang dilaporkan ke user jadi salah (nunjuk
     # ke gambar, bukan video/audio hasil download).
     if non_image_matches:
-        return [non_image_matches[0]]
+        return [sorted(non_image_matches, key=lambda p: p.name)[0]]
     if matches:
-        return [matches[0]]
+        return [sorted(matches, key=lambda p: p.name)[0]]
     return []
 
 
@@ -278,7 +289,7 @@ def _resolve_final_path(dest: Path, multi_item: bool = False) -> tuple[Path, int
     matches = _find_result_files(dest, multi_item=multi_item)
     if not matches:
         return dest, 0, 0
-    total_size = sum(m.stat().st_size for m in matches)
+    total_size = sum(m.stat().st_size for m in matches if m.exists())
     return matches[0], total_size, len(matches)
 
 

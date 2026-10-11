@@ -7,17 +7,40 @@ Pakai instaloader buat ambil metadata & URL media asli, lalu didownload manual.
 
 from __future__ import annotations
 
+import os
 import re
+import tempfile
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-import instaloader
-
+from core.constants import DOWNLOAD_TIMEOUT_SECONDS
 from core.utils import build_filename, convert_image, resolve_duplicate
 
+try:
+    import instaloader  # noqa: F401 - top-level agar kompatibel test & tetap ringan (import saja, tanpa init)
+except ImportError:  # pragma: no cover - tanpa instaloader, fitur foto IG nonaktif dengan pesan ramah
+    instaloader = None  # type: ignore[assignment]
+
 SHORTCODE_PATTERN = re.compile(r"instagram\.com/(?:p|reel|tv)/([A-Za-z0-9_-]+)")
+
+_INSTALOADER_IMPORT_ERROR = (
+    "Fitur foto Instagram butuh package 'instaloader' yang belum terinstall. "
+    "Jalankan: pip install -r requirements.txt"
+)
+
+
+def _require_instaloader():
+    if instaloader is not None:
+        return instaloader
+    try:
+        import instaloader as mod  # noqa: PLC0415 - retry lazy kalau top-level gagal
+    except ImportError as e:
+        from core.errors import DetectionError  # noqa: PLC0415
+
+        raise DetectionError(_INSTALOADER_IMPORT_ERROR) from e
+    return mod
 
 
 def is_instagram_url(url: str) -> bool:
@@ -29,7 +52,7 @@ def extract_shortcode(url: str) -> str | None:
     return match.group(1) if match else None
 
 
-def _load_cookies_from_browser(loader: instaloader.Instaloader, browser: str) -> None:
+def _load_cookies_from_browser(loader, browser: str) -> None:
     """
     Muat cookies Instagram dari browser ke session instaloader, biar bisa
     akses post yang butuh login (mis. akun private yang sudah kamu follow).
@@ -51,7 +74,7 @@ def _load_cookies_from_browser(loader: instaloader.Instaloader, browser: str) ->
     apa adanya buat request berikutnya.
     """
     try:
-        import browser_cookie3
+        import browser_cookie3  # noqa: PLC0415 - opsional, lazy
     except ImportError:
         return
 
@@ -85,6 +108,8 @@ def detect_photo(url: str, cookies_browser: str | None = None):
     dengan core.detector).
     """
     from core.detector import DetectedContent, DetectionError  # noqa: PLC0415
+
+    instaloader = _require_instaloader()
 
     shortcode = extract_shortcode(url)
     if not shortcode:
@@ -167,6 +192,44 @@ class PhotoDownloadResult:
         return len(self.paths)
 
 
+def _download_url_to_file(media_url: str, dest: Path, timeout: int = DOWNLOAD_TIMEOUT_SECONDS) -> None:
+    """
+    Download atomik via urlretrieve (mockable oleh test) ke temp file,
+    lalu rename ke nama final.
+
+    Kenapa tmp + rename: urlretrieve() yang gagal di tengah transfer bisa
+    menyisakan file parsial dengan nama final yang kelihatan sah. Dengan
+    tulis ke ".part" dulu, kegagalan tidak pernah menyisakan file bernama
+    final yang korup.
+    """
+    fd, tmp_path = tempfile.mkstemp(prefix="lf_", suffix=".part", dir=str(dest.parent))
+    os.close(fd)
+    # mkstemp membuat file kosong; hapus dulu agar urlretrieve menulis fresh.
+    try:
+        Path(tmp_path).unlink(missing_ok=True)
+    except OSError:
+        pass
+    try:
+        # urlretrieve sengaja dipakai (bukan urlopen) agar mudah di-mock
+        # di unit test tanpa network. Timeout global dijaga via socket.
+        import socket
+
+        old_timeout = socket.getdefaulttimeout()
+        socket.setdefaulttimeout(timeout)
+        try:
+            urllib.request.urlretrieve(media_url, tmp_path)  # noqa: S310 - URL dari CDN Instagram resmi
+        finally:
+            socket.setdefaulttimeout(old_timeout)
+        Path(tmp_path).replace(dest)
+    except BaseException:
+        for p in (tmp_path, str(dest)):
+            try:
+                Path(p).unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
+
+
 def download_photos(
     content,
     selected_indices: list[int] | None,
@@ -210,19 +273,25 @@ def download_photos(
         dest = resolve_duplicate(output_folder / filename)
 
         try:
-            urllib.request.urlretrieve(entry["url"], dest)  # noqa: S310 - URL dari instaloader (CDN Instagram resmi)
+            media_url = entry.get("url") if isinstance(entry, dict) else None
+            if not media_url:
+                raise ValueError("entry tanpa URL media")
+            _download_url_to_file(media_url, dest)
             final_path = dest if is_video_entry else convert_image(dest, target_ext)
             results.append(final_path)
         except Exception:  # noqa: BLE001
-            # urlretrieve() yang gagal di tengah transfer (bukan gagal total
-            # dari awal) bisa saja sudah sempat nulis `dest` sebagian/korup
-            # ke disk. Kalau tidak dibersihkan, file sampah 0-byte/korup ini
-            # nyangkut di folder output dengan nama yang KELIHATAN sah -
-            # bisa membingungkan kalau user buka foldernya manual.
-            dest.unlink(missing_ok=True)
+            # File parsial sudah dibersihkan di _download_url_to_file (atomic
+            # write), tapi panggil lagi defensif untuk jalur lama / race.
+            try:
+                dest.unlink(missing_ok=True)
+            except OSError:
+                pass
             failed_count += 1
 
         if on_progress:
-            on_progress(idx, total)
+            try:
+                on_progress(idx, total)
+            except Exception:  # noqa: BLE001
+                pass
 
     return PhotoDownloadResult(paths=results, failed_count=failed_count, total_count=total)

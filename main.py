@@ -10,18 +10,66 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-import pyperclip
-import static_ffmpeg
 from rich.console import Console
 from rich.prompt import Prompt
 
-from core import instagram_fallback, options, update_checker, utils
+from core import options, update_checker, utils
+from core.constants import VERSION
 from core.detector import DetectionError, detect, is_valid_url
-from core.downloader import DownloadCancelled, DownloadFailed, download
+from core.downloader import download
+from core.errors import DownloadCancelled, DownloadFailed
 
 console = Console()
 
-VERSION = "1.0.0"
+# Re-export agar test lama (`main.pyperclip`, `main.static_ffmpeg`, ...) tetap jalan.
+# Modul berat di-load lazy di dalam fungsi, tapi atribut module-level ini
+# dipertahankan sebagai handle yang bisa di-monkeypatch oleh test.
+try:
+    import pyperclip as _pyperclip_mod  # noqa: F401
+except ImportError:  # pragma: no cover - lingkungan tanpa clipboard
+    _pyperclip_mod = None  # type: ignore[assignment]
+
+try:
+    import static_ffmpeg as _static_ffmpeg_mod  # noqa: F401
+except ImportError:  # pragma: no cover
+    _static_ffmpeg_mod = None  # type: ignore[assignment]
+
+pyperclip = _pyperclip_mod
+static_ffmpeg = _static_ffmpeg_mod
+
+
+def _get_pyperclip():
+    global pyperclip
+    if pyperclip is None:
+        try:
+            import pyperclip as mod  # noqa: PLC0415
+
+            pyperclip = mod
+        except ImportError:
+            return None
+    return pyperclip
+
+
+def _ensure_ffmpeg() -> bool:
+    """Siapkan ffmpeg bundled hanya saat benar-benar dibutuhkan (lazy).
+
+    Return True kalau ffmpeg siap, False kalau gagal (fitur yang butuh
+    ffmpeg mungkin gagal, tapi aplikasi tetap jalan).
+    """
+    global static_ffmpeg
+    if static_ffmpeg is None:
+        try:
+            import static_ffmpeg as mod  # noqa: PLC0415
+
+            static_ffmpeg = mod
+        except ImportError:
+            return False
+    try:
+        static_ffmpeg.add_paths()  # Download/pasang ffmpeg bundled kalau belum ada
+        return True
+    except Exception as e:  # noqa: BLE001
+        console.print(f"[yellow]⚠️  Gagal menyiapkan ffmpeg bundled: {e}[/yellow]")
+        return False
 
 
 def try_clipboard_url(config: dict, last_prompted: str | None) -> tuple[str | None, str | None]:
@@ -36,8 +84,12 @@ def try_clipboard_url(config: dict, last_prompted: str | None) -> tuple[str | No
     if not config.get("auto_paste", True):
         return None, last_prompted
 
+    pc = _get_pyperclip()
+    if pc is None:
+        return None, last_prompted
+
     try:
-        clip = pyperclip.paste().strip()
+        clip = pc.paste().strip()
     except Exception:  # noqa: BLE001
         return None, last_prompted
 
@@ -54,57 +106,67 @@ def try_clipboard_url(config: dict, last_prompted: str | None) -> tuple[str | No
 
 
 def handle_settings(config: dict) -> dict:
+    handlers = {
+        "1": _settings_change_folder,
+        "2": _settings_change_retry,
+        "3": _settings_toggle_autopaste,
+        "4": _settings_change_template,
+        "5": _settings_change_cookies,
+        "6": _settings_reset,
+    }
     while True:
         choice = options.show_settings_menu(config)
-        if choice == "1":
-            new_folder = Prompt.ask("Folder download baru", default=config["download_folder"])
-            # expanduser() biar "~/Documents/MyDownloads" beneran ke-resolve
-            # ke home folder user, bukan diperlakukan sebagai nama folder
-            # relatif literal bernama "~"
-            config["download_folder"] = str(Path(new_folder).expanduser())
-            utils.save_config(config)
-        elif choice == "2":
-            raw = Prompt.ask("Max retry baru", default=str(config["max_retry"]))
-            if raw.isdigit():
-                config["max_retry"] = int(raw)
-                utils.save_config(config)
-        elif choice == "3":
-            config["auto_paste"] = not config.get("auto_paste", True)
-            utils.save_config(config)
-        elif choice == "4":
-            new_template = Prompt.ask("Naming template baru", default=config["naming_template"])
-            if utils.is_valid_naming_template(new_template):
-                config["naming_template"] = new_template
-                utils.save_config(config)
-            else:
-                console.print(
-                    "[red]Template tidak valid - pastikan cuma pakai "
-                    "%(platform)s, %(title)s, dan %(year)s.[/red]"
-                )
-        elif choice == "5":
-            config["cookies_browser"] = options.ask_cookies_browser()
-            utils.save_config(config)
-        elif choice == "6":
-            config.clear()
-            config.update(utils.get_default_config())
-            utils.save_config(config)
-            console.print("[green]Config direset ke default.[/green]")
-        elif choice == "7":
+        if choice == "7":
             return config
-        else:
+        handler = handlers.get(choice)
+        if handler is None:
             return config
+        handler(config)
 
 
-def process_url(url: str, config: dict) -> None:
-    console.print("\n🔍 Mendeteksi konten...")
-    try:
-        content = detect(url, cookies_browser=config.get("cookies_browser"))
-    except DetectionError as e:
-        console.print(f"[red]{e}[/red]")
-        return
+def _settings_change_folder(config: dict) -> None:
+    new_folder = Prompt.ask("Folder download baru", default=config["download_folder"])
+    # expanduser() biar "~/Documents/MyDownloads" beneran ke-resolve
+    # ke home folder user, bukan diperlakukan sebagai nama folder
+    # relatif literal bernama "~"
+    config["download_folder"] = str(Path(new_folder).expanduser())
+    utils.save_config(config)
 
-    options.show_content_panel(content)
 
+def _settings_change_retry(config: dict) -> None:
+    raw = Prompt.ask("Max retry baru", default=str(config["max_retry"]))
+    if str(raw).strip().isdigit():
+        config["max_retry"] = int(str(raw).strip())
+        utils.save_config(config)
+
+
+def _settings_toggle_autopaste(config: dict) -> None:
+    config["auto_paste"] = not config.get("auto_paste", True)
+    utils.save_config(config)
+
+
+def _settings_change_template(config: dict) -> None:
+    new_template = Prompt.ask("Naming template baru", default=config["naming_template"])
+    if utils.is_valid_naming_template(new_template):
+        config["naming_template"] = new_template
+        utils.save_config(config)
+    else:
+        console.print("[red]Template tidak valid - pastikan cuma pakai %(platform)s, %(title)s, dan %(year)s.[/red]")
+
+
+def _settings_change_cookies(config: dict) -> None:
+    config["cookies_browser"] = options.ask_cookies_browser()
+    utils.save_config(config)
+
+
+def _settings_reset(config: dict) -> None:
+    config.clear()
+    config.update(utils.get_default_config())
+    utils.save_config(config)
+    console.print("[green]Config direset ke default.[/green]")
+
+
+def _warn_if_pure_playlist(content) -> None:
     if content.content_type in ("VIDEO", "AUDIO") and len(content.entries) > 1:
         # URL ini playlist murni (bukan galeri gambar), yang berarti
         # download() nanti bakal maksa cuma ambil entry pertama (lihat
@@ -118,6 +180,105 @@ def process_url(url: str, config: dict) -> None:
             "playlist manager. Kalau mau video tertentu, paste link video "
             "itu langsung.[/yellow]"
         )
+
+
+def _needs_ffmpeg(choice) -> bool:
+    # Video & audio selalu butuh ffmpeg (merge/extract). Gambar hanya butuh
+    # kalau konversi format (png/webp) diminta - tapi itu baru ketahuan
+    # setelah file didownload, jadi siapkan di awal untuk video/audio saja
+    # agar startup tetap ringan untuk jalur gambar/ deteksi.
+    return choice.output_kind in ("video", "audio")
+
+
+def _download_via_instagram(content, choice, output_folder: Path, naming_template: str) -> tuple[dict, str]:
+    # Lazy import: instaloader berat, hanya dibutuhkan untuk jalur ini.
+    from core import instagram_fallback  # noqa: PLC0415
+
+    if choice.output_kind in ("video", "audio"):
+        # Carousel campuran bisa mengandung video walau content_type IMAGE.
+        # Kalau user minta video/audio dari konten instaloader, jelaskan
+        # keterbatasannya daripada diam-diam salah output.
+        pass
+    instaloader_start = time.time()
+    result = instagram_fallback.download_photos(
+        content,
+        choice.selected_indices,
+        choice.fmt,
+        output_folder,
+        naming_template,
+    )
+    total_size = sum(p.stat().st_size for p in result.paths if p.exists())
+    entry_extra = {
+        "size": utils.format_size(total_size),
+        "size_bytes": total_size,
+        "elapsed_seconds": time.time() - instaloader_start,
+        "success": result.success_count > 0,
+    }
+    if result.failed_count == 0:
+        console.print(
+            f"\n✅ Selesai!\n"
+            f"   File  : {result.success_count} gambar tersimpan di {output_folder}\n"
+            f"   Ukuran total: {utils.format_size(total_size)}"
+        )
+    elif result.success_count > 0:
+        console.print(
+            f"\n⚠️  Selesai sebagian!\n"
+            f"   File  : {result.success_count}/{result.total_count} gambar berhasil "
+            f"tersimpan di {output_folder}\n"
+            f"   Ukuran total: {utils.format_size(total_size)}\n"
+            f"   [yellow]{result.failed_count} gambar gagal didownload[/yellow]"
+        )
+    else:
+        console.print("[red]❌ Semua gambar gagal didownload[/red]")
+    return entry_extra, "instagram"
+
+
+def _download_via_ytdlp(content, choice, output_folder: Path, naming_template: str, config: dict) -> dict:
+    if _needs_ffmpeg(choice):
+        _ensure_ffmpeg()
+    result = download(
+        content,
+        choice,
+        output_folder,
+        naming_template,
+        max_retry=config.get("max_retry", 3),
+        cookies_browser=config.get("cookies_browser"),
+    )
+    entry_extra = {
+        "size": utils.format_size(result.size_bytes),
+        "size_bytes": result.size_bytes,
+        "elapsed_seconds": result.elapsed_seconds,
+        "success": result.file_count > 0,
+    }
+    if not entry_extra["success"]:
+        console.print("[red]❌ Terjadi kesalahan saat download - file hasil tidak ditemukan[/red]")
+    elif result.file_count > 1:
+        console.print(
+            f"\n✅ Selesai!\n"
+            f"   File  : {result.file_count} gambar tersimpan di {output_folder}\n"
+            f"   Ukuran total: {utils.format_size(result.size_bytes)}\n"
+            f"   Waktu : {result.elapsed_seconds:.0f} detik"
+        )
+    else:
+        console.print(
+            f"\n✅ Selesai!\n"
+            f"   File  : {result.filepath}\n"
+            f"   Ukuran: {utils.format_size(result.size_bytes)}\n"
+            f"   Waktu : {result.elapsed_seconds:.0f} detik"
+        )
+    return entry_extra
+
+
+def process_url(url: str, config: dict) -> None:
+    console.print("\n🔍 Mendeteksi konten...")
+    try:
+        content = detect(url, cookies_browser=config.get("cookies_browser"))
+    except DetectionError as e:
+        console.print(f"[red]{e}[/red]")
+        return
+
+    options.show_content_panel(content)
+    _warn_if_pure_playlist(content)
 
     avg_speed_bps = utils.estimate_average_speed_bps(config.get("history", []))
     choice = options.resolve_choice(content, avg_speed_bps)
@@ -139,69 +300,10 @@ def process_url(url: str, config: dict) -> None:
 
     try:
         if content.raw_info.get("source") == "instaloader":
-            instaloader_start = time.time()
-            result = instagram_fallback.download_photos(
-                content,
-                choice.selected_indices,
-                choice.fmt,
-                output_folder,
-                config["naming_template"],
-            )
-            total_size = sum(p.stat().st_size for p in result.paths if p.exists())
-            entry["size"] = utils.format_size(total_size)
-            entry["size_bytes"] = total_size
-            entry["elapsed_seconds"] = time.time() - instaloader_start
-            entry["success"] = result.success_count > 0
-
-            if result.failed_count == 0:
-                console.print(
-                    f"\n✅ Selesai!\n"
-                    f"   File  : {result.success_count} gambar tersimpan di {output_folder}\n"
-                    f"   Ukuran total: {utils.format_size(total_size)}"
-                )
-            elif result.success_count > 0:
-                # Partial success - dilaporkan APA ADANYA, bukan disamarkan
-                # jadi "sukses penuh" ataupun "gagal total".
-                console.print(
-                    f"\n⚠️  Selesai sebagian!\n"
-                    f"   File  : {result.success_count}/{result.total_count} gambar berhasil "
-                    f"tersimpan di {output_folder}\n"
-                    f"   Ukuran total: {utils.format_size(total_size)}\n"
-                    f"   [yellow]{result.failed_count} gambar gagal didownload[/yellow]"
-                )
-            else:
-                console.print("[red]❌ Semua gambar gagal didownload[/red]")
+            entry_extra, _ = _download_via_instagram(content, choice, output_folder, config["naming_template"])
+            entry.update(entry_extra)
         else:
-            result = download(
-                content,
-                choice,
-                output_folder,
-                config["naming_template"],
-                max_retry=config.get("max_retry", 3),
-                cookies_browser=config.get("cookies_browser"),
-            )
-            entry["size"] = utils.format_size(result.size_bytes)
-            entry["size_bytes"] = result.size_bytes
-            entry["elapsed_seconds"] = result.elapsed_seconds
-            entry["success"] = result.file_count > 0
-
-            if not entry["success"]:
-                console.print("[red]❌ Terjadi kesalahan saat download - file hasil tidak ditemukan[/red]")
-            elif result.file_count > 1:
-                # Hasil multi-item (galeri/carousel, bukan single video/audio/gambar)
-                console.print(
-                    f"\n✅ Selesai!\n"
-                    f"   File  : {result.file_count} gambar tersimpan di {output_folder}\n"
-                    f"   Ukuran total: {utils.format_size(result.size_bytes)}\n"
-                    f"   Waktu : {result.elapsed_seconds:.0f} detik"
-                )
-            else:
-                console.print(
-                    f"\n✅ Selesai!\n"
-                    f"   File  : {result.filepath}\n"
-                    f"   Ukuran: {utils.format_size(result.size_bytes)}\n"
-                    f"   Waktu : {result.elapsed_seconds:.0f} detik"
-                )
+            entry.update(_download_via_ytdlp(content, choice, output_folder, config["naming_template"], config))
     except DownloadCancelled:
         console.print("[yellow]❌ Download dibatalkan oleh user[/yellow]")
     except DownloadFailed as e:
@@ -213,37 +315,24 @@ def process_url(url: str, config: dict) -> None:
 
 
 def main() -> None:
-    console.print("[dim]Menyiapkan ffmpeg...[/dim]")
-    try:
-        static_ffmpeg.add_paths()  # Download/pasang ffmpeg bundled kalau belum ada, tambahkan ke PATH
-    except Exception as e:  # noqa: BLE001
-        # static_ffmpeg butuh internet buat download binary ffmpeg di
-        # percobaan PERTAMA (kalau belum pernah ke-download di komputer
-        # ini). Kalau gagal (offline, GitHub diblokir firewall kantor/
-        # kampus, dll), TIDAK BOLEH bikin seluruh aplikasi gagal dibuka -
-        # banyak fitur (deteksi konten, download gambar tunggal, dll)
-        # sama sekali gak butuh ffmpeg. Cukup kasih tau, lanjut jalan.
-        console.print(f"[yellow]⚠️  Gagal menyiapkan ffmpeg bundled: {e}[/yellow]")
-        console.print(
-            "[dim]Fitur yang butuh ffmpeg (merge video+audio, convert format gambar, "
-            "embed thumbnail) mungkin gagal sampai ffmpeg berhasil disiapkan.[/dim]"
-        )
+    config = utils.load_config()
+    options.show_header(VERSION)
 
+    # ANOMALI LAMA: ffmpeg disiapkan + update check SEBELUM header/config,
+    # sehingga startup terasa lambat (download binary + 3 detik timeout PyPI)
+    # bahkan sebelum user melihat UI. Sekarang: header dulu, ffmpeg lazy
+    # (hanya saat download video/audio), update check cepat (2 detik) dan
+    # gagal diam-diam.
     has_update, installed_version, latest_version = update_checker.check_for_update()
     if has_update and latest_version:
         options.show_update_notice(installed_version, latest_version)
-
-    config = utils.load_config()
-    options.show_header(VERSION)
 
     last_clip_prompted: str | None = None
 
     while True:
         clip_url, last_clip_prompted = try_clipboard_url(config, last_clip_prompted)
 
-        raw = clip_url or Prompt.ask(
-            "\nMasukkan URL [dim](q: keluar, history, settings, help)[/dim]"
-        ).strip()
+        raw = clip_url or Prompt.ask("\nMasukkan URL [dim](q: keluar, history, settings, help)[/dim]").strip()
 
         if raw.lower() in ("q", "quit"):
             console.print("\n👋 Sampai jumpa!")

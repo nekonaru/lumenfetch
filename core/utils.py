@@ -2,6 +2,10 @@
 utils.py
 Kumpulan fungsi bantu: sanitasi nama file, format ukuran,
 dan baca/tulis config.json.
+
+Fasad kompatibel: nilai kanonis tinggal di core.constants,
+tapi tetap di-re-export dari sini agar import lama
+(`from core.utils import MAX_TITLE_LEN`, dll) tidak rusak.
 """
 
 from __future__ import annotations
@@ -13,7 +17,56 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-CONFIG_PATH = Path("config.json")
+from core.constants import (
+    AUDIO_TARGET_KBPS,
+    CONFIG_VERSION,
+    HEIGHT_LIMITS,
+    HISTORY_LIMIT,
+    ILLEGAL_CHARS,
+    MAX_TITLE_LEN,
+    SUPPORTED_COOKIE_BROWSERS,
+    WINDOWS_RESERVED_NAMES,
+)
+
+__all__ = [
+    "CONFIG_PATH",
+    "DEFAULT_CONFIG",
+    "SUPPORTED_COOKIE_BROWSERS",
+    "ILLEGAL_CHARS",
+    "MAX_TITLE_LEN",
+    "get_default_download_folder",
+    "get_default_config",
+    "load_config",
+    "save_config",
+    "add_history_entry",
+    "clear_history",
+    "sanitize_filename",
+    "is_valid_naming_template",
+    "build_filename",
+    "find_indexed_files",
+    "resolve_duplicate",
+    "build_cookies_from_browser",
+    "convert_image",
+    "format_size",
+    "format_duration",
+    "estimate_video_size_bytes",
+    "estimate_audio_size_bytes",
+    "estimate_average_speed_bps",
+    "format_eta",
+]
+
+# Re-export agar `utils.MAX_TITLE_LEN` dkk tetap tersedia.
+# (Nilai kanonisnya di core.constants)
+
+
+def _project_root() -> Path:
+    return Path(__file__).resolve().parent.parent
+
+
+# ANOMALI LAMA: Path("config.json") relatif ke CWD, sehingga config
+# "tercecer" kalau user menjalankan dari folder berbeda (lihat README).
+# Sekarang absolut ke project root (folder yang berisi main.py).
+CONFIG_PATH = _project_root() / "config.json"
 
 
 def get_default_download_folder() -> str:
@@ -28,7 +81,7 @@ def get_default_download_folder() -> str:
 
 
 DEFAULT_CONFIG = {
-    "version": 1,
+    "version": CONFIG_VERSION,
     "download_folder": get_default_download_folder(),
     "auto_paste": True,
     "naming_template": "%(platform)s_%(title)s_%(year)s",
@@ -36,13 +89,6 @@ DEFAULT_CONFIG = {
     "cookies_browser": None,
     "history": [],
 }
-
-# Browser yang didukung yt-dlp untuk ambil cookies (buat konten yang butuh login,
-# misal Instagram). None/"none" berarti fitur ini nonaktif.
-SUPPORTED_COOKIE_BROWSERS = ["none", "chrome", "firefox", "edge", "brave", "opera", "vivaldi", "safari"]
-
-ILLEGAL_CHARS = r'[\\/:*?"<>|]'
-MAX_TITLE_LEN = 80
 
 
 def get_default_config() -> dict:
@@ -58,6 +104,34 @@ def get_default_config() -> dict:
     return copy.deepcopy(DEFAULT_CONFIG)
 
 
+def _coerce_config(data: dict) -> dict:
+    """Validasi ringan untuk config hasil load / edit manual."""
+    merged = get_default_config()
+    if not isinstance(data, dict):
+        return merged
+    merged.update(data)
+    # max_retry harus int >= 0, kalau rusak fallback ke default.
+    try:
+        merged["max_retry"] = max(0, int(merged.get("max_retry", 3)))
+    except (TypeError, ValueError):
+        merged["max_retry"] = 3
+    if not isinstance(merged.get("history"), list):
+        merged["history"] = []
+    # Normalisasi cookies_browser: "none"/"" dianggap None (nonaktif).
+    cb = merged.get("cookies_browser")
+    if cb is None:
+        pass
+    elif isinstance(cb, str) and cb.strip().lower() in ("", "none"):
+        merged["cookies_browser"] = None
+    elif isinstance(cb, str):
+        merged["cookies_browser"] = cb.strip().lower()
+    else:
+        merged["cookies_browser"] = None
+    if not isinstance(merged.get("download_folder"), str) or not merged["download_folder"].strip():
+        merged["download_folder"] = get_default_download_folder()
+    return merged
+
+
 def load_config() -> dict:
     """Baca config.json, buat default kalau belum ada / rusak."""
     if not CONFIG_PATH.exists():
@@ -68,11 +142,8 @@ def load_config() -> dict:
     try:
         with CONFIG_PATH.open("r", encoding="utf-8") as f:
             data = json.load(f)
-        # Isi field yang hilang biar tetap kompatibel ke depan
-        merged = get_default_config()
-        merged.update(data)
-        return merged
-    except (json.JSONDecodeError, OSError):
+        return _coerce_config(data)
+    except (json.JSONDecodeError, OSError, ValueError, AttributeError):
         fresh = get_default_config()
         save_config(fresh)
         return fresh
@@ -92,6 +163,7 @@ def save_config(config: dict) -> None:
     perlu notifikasi ke user, itu tanggung jawab caller.
     """
     try:
+        CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
         with CONFIG_PATH.open("w", encoding="utf-8") as f:
             json.dump(config, f, indent=2, ensure_ascii=False)
     except OSError:
@@ -99,10 +171,13 @@ def save_config(config: dict) -> None:
 
 
 def add_history_entry(config: dict, entry: dict) -> None:
-    """Tambah entri riwayat baru, maksimal simpan 20 entri terakhir."""
-    history = config.get("history", [])
+    """Tambah entri riwayat baru, maksimal simpan HISTORY_LIMIT entri terakhir."""
+    history = config.get("history")
+    if not isinstance(history, list):
+        history = []
+        config["history"] = history
     history.insert(0, entry)
-    config["history"] = history[:20]
+    config["history"] = history[:HISTORY_LIMIT]
     save_config(config)
 
 
@@ -111,13 +186,21 @@ def clear_history(config: dict) -> None:
     save_config(config)
 
 
-def sanitize_filename(name: str) -> str:
+def sanitize_filename(name: str | None) -> str:
     """Bersihkan nama file dari karakter ilegal & spasi, truncate max 80 char."""
     if not name:
         name = "untitled"
     name = re.sub(ILLEGAL_CHARS, "_", name)
-    name = name.strip().replace(" ", "-")
+    # Ganti SEMUA whitespace (spasi, tab, newline) jadi "-", bukan cuma " ".
+    name = re.sub(r"\s+", "-", name.strip())
     name = re.sub(r"-{2,}", "-", name)
+    # Windows melarang nama diakhiri titik/spasi.
+    name = name.strip(" .")
+    if not name:
+        name = "untitled"
+    # Nama reserved Windows (CON, PRN, ...) tidak boleh dipakai polos.
+    if name.upper() in WINDOWS_RESERVED_NAMES:
+        name = f"_{name}"
     return name[:MAX_TITLE_LEN]
 
 
@@ -154,7 +237,16 @@ def build_filename(platform: str, title: str, ext: str, template: str) -> str:
         base = template % values
     except (KeyError, ValueError, TypeError):
         base = DEFAULT_CONFIG["naming_template"] % values
-    return f"{base}.{ext}"
+    base = sanitize_filename(base) if base else "untitled"
+    ext = (ext or "").lower().lstrip(".")
+    return f"{base}.{ext}" if ext else base
+
+
+def _iter_dir_files(folder: Path):
+    try:
+        yield from folder.iterdir()
+    except OSError:
+        return
 
 
 def find_indexed_files(dest: Path) -> list[Path]:
@@ -176,10 +268,14 @@ def find_indexed_files(dest: Path) -> list[Path]:
     dari nama file) - kalau pakai sorted() string biasa, "Galeri-10.jpg"
     bakal muncul SEBELUM "Galeri-2.jpg" (perbandingan karakter '1' < '2'),
     padahal urutan aslinya seharusnya 2 dulu baru 10.
+
+    FIX: tidak pakai `glob(f"{stem}-*.*")` mentah karena stem bisa mengandung
+    karakter glob (`[`, `*`, `?`) dari judul asli (mis. "Video [Official]").
+    Pakai iterdir + regex agar aman untuk semua judul.
     """
     pattern = re.compile(rf"^{re.escape(dest.stem)}-(\d+)\.[^.]+$")
     indexed_matches = []
-    for p in dest.parent.glob(f"{dest.stem}-*.*"):
+    for p in _iter_dir_files(dest.parent):
         if not p.is_file():
             continue
         m = pattern.match(p.name)
@@ -227,11 +323,14 @@ def build_cookies_from_browser(browser: str | None):
     Ubah nama browser dari config jadi format yang dipahami yt-dlp
     (opsi 'cookiesfrombrowser'). Return None kalau fitur nonaktif.
     """
-    if not browser or browser == "none":
+    if not browser:
         return None
-    if browser not in SUPPORTED_COOKIE_BROWSERS:
+    normalized = str(browser).strip().lower()
+    if normalized in ("", "none"):
         return None
-    return (browser, None, None, None)
+    if normalized not in SUPPORTED_COOKIE_BROWSERS:
+        return None
+    return (normalized, None, None, None)
 
 
 def convert_image(src: Path, target_ext: str) -> Path:
@@ -248,6 +347,8 @@ def convert_image(src: Path, target_ext: str) -> Path:
     bikin seluruh download dianggap gagal (gambarnya sendiri tetap
     tersimpan utuh, cuma formatnya beda dari yang diminta).
     """
+    from core.constants import FFMPEG_TIMEOUT_SECONDS
+
     target_ext = target_ext.lower().lstrip(".")
     current_ext = src.suffix.lower().lstrip(".")
 
@@ -258,35 +359,59 @@ def convert_image(src: Path, target_ext: str) -> Path:
         return src
 
     dest = src.with_suffix(f".{target_ext}")
+    if dest.exists():
+        # Hindari overwrite file orang lain; cari nama unik.
+        dest = resolve_duplicate(dest)
     try:
         subprocess.run(
             ["ffmpeg", "-y", "-i", str(src), str(dest)],
             check=True,
-            capture_output=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=FFMPEG_TIMEOUT_SECONDS,
         )
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
-        return src  # gagal konversi, tetap simpan file asli
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        # Bersihkan file parsial hasil convert yang gagal, lalu fallback ke asli.
+        try:
+            dest.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return src
 
-    src.unlink(missing_ok=True)
+    try:
+        src.unlink(missing_ok=True)
+    except OSError:
+        pass
     return dest
 
 
-def format_size(num_bytes: float) -> str:
+def format_size(num_bytes: float | None) -> str:
     """Format bytes jadi human-readable (KB/MB/GB)."""
     if num_bytes is None:
         return "?"
+    try:
+        num = float(num_bytes)
+    except (TypeError, ValueError):
+        return "?"
+    if num < 0:
+        num = 0
     for unit in ("B", "KB", "MB", "GB"):
-        if num_bytes < 1024:
-            return f"{num_bytes:.1f} {unit}"
-        num_bytes /= 1024
-    return f"{num_bytes:.1f} TB"
+        if num < 1024:
+            return f"{num:.1f} {unit}"
+        num /= 1024
+    return f"{num:.1f} TB"
 
 
 def format_duration(seconds) -> str:
     """Format detik jadi H:MM:SS atau M:SS."""
     if not seconds:
         return "-"
-    seconds = int(seconds)
+    try:
+        seconds = int(seconds)
+    except (TypeError, ValueError):
+        return "-"
+    if seconds <= 0:
+        return "-"
     h, rem = divmod(seconds, 3600)
     m, s = divmod(rem, 60)
     if h:
@@ -302,13 +427,27 @@ def _format_size_bytes_from_info(fmt: dict, duration: float | None) -> int | Non
     ngasih tau ukuran di metadata), fallback hitung dari bitrate (tbr,
     satuan kbit/s) dikali durasi video.
     """
+    if not isinstance(fmt, dict):
+        return None
     if fmt.get("filesize"):
-        return int(fmt["filesize"])
+        try:
+            return int(fmt["filesize"])
+        except (TypeError, ValueError):
+            pass
     if fmt.get("filesize_approx"):
-        return int(fmt["filesize_approx"])
-    tbr = fmt.get("tbr")
+        try:
+            return int(fmt["filesize_approx"])
+        except (TypeError, ValueError):
+            pass
+    try:
+        tbr = float(fmt.get("tbr") or 0)
+    except (TypeError, ValueError):
+        tbr = 0
     if tbr and duration:
-        return int(tbr * 1000 / 8 * duration)
+        try:
+            return int(tbr * 1000 / 8 * float(duration))
+        except (TypeError, ValueError):
+            return None
     return None
 
 
@@ -324,10 +463,9 @@ def estimate_video_size_bytes(formats: list[dict], quality: str, duration: float
     if not formats or not duration:
         return None
 
-    height_limits = {"1080p": 1080, "720p": 720, "480p": 480, "360p": 360}
-    limit = height_limits.get(quality)
+    limit = HEIGHT_LIMITS.get(quality)
 
-    video_formats = [f for f in formats if f.get("vcodec") not in (None, "none") and f.get("height")]
+    video_formats = [f for f in formats if isinstance(f, dict) and f.get("vcodec") not in (None, "none") and f.get("height")]
     if not video_formats:
         return None
 
@@ -350,7 +488,7 @@ def estimate_video_size_bytes(formats: list[dict], quality: str, duration: float
         return None
 
     audio_formats = [
-        f for f in formats if f.get("acodec") not in (None, "none") and f.get("vcodec") in (None, "none")
+        f for f in formats if isinstance(f, dict) and f.get("acodec") not in (None, "none") and f.get("vcodec") in (None, "none")
     ]
     audio_size = 0
     if audio_formats:
@@ -371,16 +509,22 @@ def estimate_audio_size_bytes(formats: list[dict], quality: str, duration: float
     if not duration:
         return None
 
-    kbps_map = {"320kbps": 320, "192kbps": 192, "128kbps": 128}
-    target_kbps = kbps_map.get(quality)
-    if target_kbps:
-        return int(target_kbps * 1000 / 8 * duration)
+    try:
+        dur = float(duration)
+    except (TypeError, ValueError):
+        return None
+    if dur <= 0:
+        return None
 
-    audio_formats = [f for f in (formats or []) if f.get("acodec") not in (None, "none")]
+    target_kbps = AUDIO_TARGET_KBPS.get(quality)
+    if target_kbps:
+        return int(target_kbps * 1000 / 8 * dur)
+
+    audio_formats = [f for f in (formats or []) if isinstance(f, dict) and f.get("acodec") not in (None, "none")]
     if not audio_formats:
         return None
     audio_formats.sort(key=lambda f: f.get("abr") or 0, reverse=True)
-    return _format_size_bytes_from_info(audio_formats[0], duration)
+    return _format_size_bytes_from_info(audio_formats[0], dur)
 
 
 def estimate_average_speed_bps(history: list[dict], sample_size: int = 10) -> float | None:
@@ -393,12 +537,15 @@ def estimate_average_speed_bps(history: list[dict], sample_size: int = 10) -> fl
     """
     speeds = []
     for entry in (history or [])[:sample_size]:
-        if not entry.get("success"):
+        if not isinstance(entry, dict) or not entry.get("success"):
             continue
         size_bytes = entry.get("size_bytes")
         elapsed = entry.get("elapsed_seconds")
-        if size_bytes and elapsed and elapsed > 0:
-            speeds.append(size_bytes / elapsed)
+        try:
+            if size_bytes and elapsed and float(elapsed) > 0:
+                speeds.append(float(size_bytes) / float(elapsed))
+        except (TypeError, ValueError):
+            continue
 
     if not speeds:
         return None
@@ -407,10 +554,13 @@ def estimate_average_speed_bps(history: list[dict], sample_size: int = 10) -> fl
 
 def format_eta(size_bytes: int | None, speed_bps: float | None) -> str | None:
     """Ubah estimasi ukuran + kecepatan jadi teks perkiraan waktu ("~14 detik", "~2 menit"). None kalau datanya kurang."""
-    if not size_bytes or not speed_bps or speed_bps <= 0:
+    try:
+        if not size_bytes or not speed_bps or float(speed_bps) <= 0:
+            return None
+        seconds = float(size_bytes) / float(speed_bps)
+    except (TypeError, ValueError):
         return None
 
-    seconds = size_bytes / speed_bps
     if seconds < 60:
         return f"~{seconds:.0f} detik"
     minutes = seconds / 60

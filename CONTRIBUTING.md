@@ -17,6 +17,8 @@ Lumenfetch sengaja dipisah per tanggung jawab, tolong dijaga konsistensinya kala
 
 | File | Tanggung jawab | Tidak boleh |
 |------|-----------------|-------------|
+| `core/constants.py` | Nilai shared (versi, format, batas) | Logic bisnis |
+| `core/errors.py` | Klasifikasi error + pesan ramah terpusat | Logic download/deteksi |
 | `core/detector.py` | Deteksi platform, judul, tipe konten via yt-dlp | Mendownload apa pun |
 | `core/downloader.py` | Proses download, progress hook, retry | Menampilkan menu/prompt |
 | `core/options.py` | Semua interaksi & tampilan menu (rich) | Logic download |

@@ -1,3 +1,24 @@
+[project]
+name = "lumenfetch"
+version = "1.0.0"
+description = "Universal media downloader buat terminal - paste link, biar sisanya otomatis."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = [
+    "yt-dlp",
+    "rich",
+    # Opsional tapi direkomendasikan (degraded gracefully kalau absen):
+    # - pyperclip: auto-paste clipboard
+    # - static-ffmpeg: ffmpeg bundled (video/audio/convert gambar)
+    # - instaloader: fallback foto Instagram
+    # - browser-cookie3: cookies dari browser
+    "pyperclip",
+    "static-ffmpeg",
+    "instaloader",
+    "browser-cookie3",
+]
+
 [tool.ruff]
 line-length = 120
 target-version = "py39"
