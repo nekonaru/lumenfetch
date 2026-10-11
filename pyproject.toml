@@ -19,6 +19,18 @@ dependencies = [
     "browser-cookie3",
 ]
 
+[project.scripts]
+lumenfetch = "main:main"
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "pyinstaller"]
+
+[project.urls]
+Homepage = "https://github.com/nekonaru/lumenfetch"
+
+[tool.hatch.build.targets.wheel]
+packages = ["core"]
+
 [tool.ruff]
 line-length = 120
 target-version = "py39"

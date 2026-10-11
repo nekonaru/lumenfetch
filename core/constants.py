@@ -11,10 +11,30 @@ VERSION = "1.0.0"
 
 # --- Config ---
 HISTORY_LIMIT = 20
+HISTORY_LOCK_TIMEOUT = 5.0
 CONFIG_VERSION = 1
 UPDATE_CHECK_TIMEOUT_SECONDS = 2
 DOWNLOAD_TIMEOUT_SECONDS = 30
 FFMPEG_TIMEOUT_SECONDS = 120
+APP_NAME = "lumenfetch"
+
+# --- Retry (backoff eksponensial) ---
+RETRY_BASE_DELAY_SECONDS = 2.0
+RETRY_MAX_DELAY_SECONDS = 30.0
+RETRY_JITTER_SECONDS = 1.0
+
+# --- Playlist ---
+PLAYLIST_MODE_SINGLE = "single"
+PLAYLIST_MODE_ALL = "all"
+PLAYLIST_MODES = [PLAYLIST_MODE_SINGLE, PLAYLIST_MODE_ALL]
+
+# --- Subtitle ---
+SUBTITLE_LANGS_DEFAULT = ["en", "id"]
+SUBTITLE_FORMATS = ["srt", "vtt", "ass", "lrc"]
+
+# --- Batch ---
+BATCH_DEFAULT_JOBS = 1
+BATCH_MAX_JOBS = 4
 
 # --- Filenames ---
 ILLEGAL_CHARS = r'[\\/:*?"<>|]'

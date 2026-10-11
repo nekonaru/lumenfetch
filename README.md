@@ -121,6 +121,20 @@ pip install -r requirements.txt
 **Jalankan:**
 ```bash
 python main.py
+# atau non-interaktif:
+python main.py "https://youtube.com/watch?v=..." -t video -f mp4 -q 720p -y
+python main.py --batch daftar.txt --jobs 2
+python main.py --history
+python main.py --help
+```
+
+**Flag CLI:**
+```
+-t/--type {video,audio,image}  -f/--format  -q/--quality
+-o/--output  --cookies  --max-retry  --playlist {single,all}
+--subs  --sub-langs en,id  --embed-subs  --embed-metadata
+--batch file.txt  --jobs 1-4  --no-clipboard  -y/--yes  -v/--verbose
+--history  --version
 ```
 
 **Masukkan URL saat diminta:**
@@ -216,7 +230,10 @@ YouTube_Lofi-Hip-Hop-Radio_2026.mp4
 Instagram_Post-by-username_2026.jpg
 ```
 
-Preferensi kamu (folder simpan, max retry, auto-paste, naming template, cookies browser, dan riwayat) otomatis tersimpan di `config.json` - dibuat otomatis dengan nilai default saat pertama kali dijalankan, jadi nggak perlu disentuh manual kecuali mau kustomisasi lewat command `settings`.
+Preferensi kamu (folder simpan, max retry, auto-paste, naming template, cookies browser, dan riwayat) otomatis tersimpan di config user
+(`%APPDATA%/lumenfetch/config.json` di Windows, `~/.config/lumenfetch/config.json` di Linux, `~/Library/Application Support/lumenfetch/` di macOS)
+- dibuat otomatis dengan nilai default saat pertama kali dijalankan. Config lama di `config.json` project root dimigrasi otomatis sekali.
+Log detail tersimpan di `lumenfetch.log` sefolder config (pakai `-v/--verbose` untuk level debug).
 
 **Folder download default** otomatis mengikuti folder **Downloads** asli sistem operasi kamu (`~/Downloads` di macOS/Linux, `C:\Users\<nama-kamu>\Downloads` di Windows) - persis seperti kebiasaan browser lain (Chrome, Firefox, Edge, dll), bukan folder relatif di dalam project. Mau ganti ke folder lain? Tinggal:
 
@@ -240,33 +257,44 @@ Preferensi kamu (folder simpan, max retry, auto-paste, naming template, cookies 
 | `❌ Koneksi internet bermasalah` terus muncul | Cek koneksi, atau naikkan `max_retry` lewat command `settings` |
 | Video berhasil download tapi tidak ada suara | Jarang terjadi karena ffmpeg sudah bundled otomatis, tapi kalau muncul, jalankan ulang aplikasinya (ffmpeg diunduh ulang otomatis kalau file sebelumnya rusak) |
 | Ganti naming template di `settings` ditolak | Template cuma boleh pakai `%(platform)s`, `%(title)s`, `%(year)s` - ditolak otomatis kalau ada placeholder salah ketik, biar tidak bikin nama file error saat download |
-| `⚠️ URL ini playlist berisi N video` | Bukan error - Lumenfetch cuma download satu konten per URL (video pertama dari playlist itu). Kalau mau video tertentu, buka video itu langsung lalu copy link-nya (bukan link playlist) |
+| `⚠️ URL ini playlist berisi N video` | Default cuma video pertama. Gunakan `--playlist all` untuk download semua sebagai file ber-index |
+| Batch download | Buat file teks (satu URL per baris, `#` = komentar), lalu `python main.py --batch daftar.txt --jobs 2` |
+| Resume download | Didukung via `continuedl` yt-dlp + retry backoff eksponensial (2s, 4s, 8s... max 30s). File parsial `.part` dilanjutkan, bukan diulang dari 0 |
+| `ffmpeg tidak ditemukan` | Install ffmpeg sistem dulu (lebih ringan), fallback bundled otomatis. Cek dengan `ffmpeg -version` |
 | Video format WEBM tidak ada thumbnail ter-embed | Ini memang keterbatasan yt-dlp - thumbnail embedding cuma didukung untuk MP4/MKV, bukan bug. File video WEBM-nya sendiri tetap utuh dan lengkap, cuma tanpa thumbnail |
 
 ## 🗂️ Struktur Project
 
 ```
 lumenfetch/
-├── main.py                    # Entry point & loop utama
+├── main.py                    # Entry point, CLI args, batch, loop utama
 ├── core/
 │   ├── constants.py           # Single source of truth (versi, daftar format, batas)
 │   ├── errors.py              # Taxonomy error terpusat (klasifikasi + pesan ramah)
-│   ├── downloader.py          # Logic download (yt-dlp API) + progress hook + retry
+│   ├── ffmpeg.py              # Deteksi ffmpeg sistem dulu, bundled fallback
+│   ├── log.py                 # Logging file terpusat
+│   ├── downloader.py          # Logic download (yt-dlp API) + resume + retry backoff
 │   ├── detector.py            # Deteksi platform & tipe konten
 │   ├── options.py             # Menu & prompt interaktif (rich)
 │   ├── instagram_fallback.py  # Fallback foto Instagram pakai instaloader
 │   ├── update_checker.py      # Auto-check versi terbaru yt-dlp di PyPI
 │   └── utils.py               # Sanitasi nama file, format size, config.json
 ├── tests/
-│   └── test_lumenfetch.py     # Unit test (pytest)
+│   ├── conftest.py            # Fixture global (no-sleep) + SAMPLE_VIDEO_FORMATS
+│   ├── test_utils.py
+│   ├── test_detector.py
+│   ├── test_downloader.py
+│   ├── test_instagram.py
+│   ├── test_options.py
+│   ├── test_main.py
+│   └── test_features.py       # Fitur baru (CLI, backoff, batch, ffmpeg, log)
 ├── .github/
 │   └── workflows/
 │       └── tests.yml          # CI: test & lint otomatis
 ├── downloads/                 # Folder placeholder (bukan lokasi download aktual - lihat "Naming & Konfigurasi")
-├── config.json                # Preferensi user (auto-generate, tidak di-commit)
 ├── requirements.txt
 ├── requirements-dev.txt       # Dependency tambahan untuk development (pytest, ruff)
-├── pyproject.toml             # Metadata project + konfigurasi ruff
+├── pyproject.toml             # Metadata project + entry point + konfigurasi ruff
 ├── CONTRIBUTING.md
 ├── LICENSE
 └── README.md

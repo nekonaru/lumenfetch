@@ -21,7 +21,14 @@ from rich.progress import (
     TransferSpeedColumn,
 )
 
-from core.constants import EMBEDDABLE_VIDEO_FORMATS
+from core.constants import (
+    EMBEDDABLE_VIDEO_FORMATS,
+    PLAYLIST_MODE_ALL,
+    RETRY_BASE_DELAY_SECONDS,
+    RETRY_JITTER_SECONDS,
+    RETRY_MAX_DELAY_SECONDS,
+    SUBTITLE_LANGS_DEFAULT,
+)
 from core.detector import DetectedContent
 from core.errors import (
     DownloadCancelled,
@@ -46,6 +53,7 @@ __all__ = [
     "DownloadResult",
     "CONNECTION_ERROR_HINTS",
     "EMBEDDABLE_VIDEO_FORMATS",
+    "backoff_delay",
     "download",
 ]
 
@@ -124,6 +132,19 @@ def _friendly_message(kind: str) -> str:
     return friendly_message(kind)
 
 
+def backoff_delay(attempt: int) -> float:
+    """Delay eksponensial untuk retry ke-`attempt` (1-indexed), dibatasi max + jitter.
+
+    attempt=1 -> ~2s, 2 -> ~4s, 3 -> ~8s, ... capped di RETRY_MAX_DELAY_SECONDS.
+    Jitter acak 0..RETRY_JITTER_SECONDS biar retry paralel tidak sinkron.
+    """
+    import random
+
+    base = RETRY_BASE_DELAY_SECONDS * (2.0 ** max(0, attempt - 1))
+    capped = min(base, RETRY_MAX_DELAY_SECONDS)
+    return capped + random.uniform(0, RETRY_JITTER_SECONDS)
+
+
 def download(
     content: DetectedContent,
     choice: DownloadChoice,
@@ -139,6 +160,7 @@ def download(
     filename = build_filename(content.platform, content.title, ext, naming_template)
 
     entries_count = len(getattr(content, "entries", None) or [])
+    playlist_all = getattr(choice, "playlist_mode", "single") == PLAYLIST_MODE_ALL
 
     # Konten gambar multi-item (carousel/galeri yang terdeteksi via yt-dlp,
     # BUKAN instaloader - itu punya jalur download sendiri) butuh perlakuan
@@ -151,6 +173,11 @@ def download(
     # (lihat docstring resolve_duplicate).
     is_multi_item = choice.output_kind == "image" and not choice.is_video_thumbnail and entries_count > 1
 
+    # Playlist murni (VIDEO/AUDIO dengan entries > 1): default tetap single
+    # (backward compat), tapi --playlist all memaksa semua entry dengan
+    # outtmpl ber-index agar tidak saling timpa.
+    is_playlist_all = playlist_all and not is_multi_item and entries_count > 1
+
     # Kasus SEBALIKNYA: content_type VIDEO/AUDIO tapi entries > 1 berarti
     # URL-nya sebenarnya playlist MURNI (tanpa parameter "v="), bukan galeri
     # gambar. "noplaylist" TIDAK berefek buat URL semacam ini - dikonfirmasi
@@ -162,12 +189,17 @@ def download(
     # file yang sama (app ini didesain satu konten per URL, bukan playlist
     # manager) - playlist_items="1" memaksa cuma entry pertama yang diambil,
     # apa pun isi "noplaylist"-nya.
-    force_single_item = not is_multi_item and entries_count > 1
+    force_single_item = not is_multi_item and not is_playlist_all and entries_count > 1
 
-    dest = resolve_duplicate(output_folder / filename, multi_item=is_multi_item)
+    dest = resolve_duplicate(output_folder / filename, multi_item=(is_multi_item or is_playlist_all))
 
     ydl_opts = _build_ydl_opts(
-        choice, dest, cookies_browser, multi_item=is_multi_item, force_single_item=force_single_item
+        choice,
+        dest,
+        cookies_browser,
+        multi_item=is_multi_item,
+        force_single_item=force_single_item,
+        playlist_all=is_playlist_all,
     )
 
     attempt = 0
@@ -195,8 +227,9 @@ def download(
                 kind = _classify_error(e)
                 if kind == "connection" and attempt < max_retry:
                     attempt += 1
-                    console.print(f"🔄 Retry {attempt}/{max_retry}...")
-                    time.sleep(2)
+                    delay = backoff_delay(attempt)
+                    console.print(f"🔄 Retry {attempt}/{max_retry} dalam {delay:.0f}s...")
+                    time.sleep(delay)
                     continue
                 raise DownloadFailed(_friendly_message(kind)) from e
             except Exception as e:  # noqa: BLE001
@@ -204,6 +237,7 @@ def download(
 
     elapsed = time.time() - start_time
 
+    multi_result = is_multi_item or is_playlist_all
     if choice.output_kind == "image":
         # Bug: menu ask_image_choice() menawarkan JPG/PNG/WEBP untuk SEMUA
         # sumber gambar (thumbnail YouTube, galeri Pinterest/Reddit/X, dll),
@@ -220,7 +254,7 @@ def download(
             total_size = sum(f.stat().st_size for f in converted_files if f.exists())
             file_count = len(converted_files)
     else:
-        final_path, total_size, file_count = _resolve_final_path(dest, multi_item=is_multi_item)
+        final_path, total_size, file_count = _resolve_final_path(dest, multi_item=multi_result)
 
     return DownloadResult(filepath=final_path, size_bytes=total_size, elapsed_seconds=elapsed, file_count=file_count)
 
@@ -299,11 +333,14 @@ def _build_ydl_opts(
     cookies_browser: str | None = None,
     multi_item: bool = False,
     force_single_item: bool = False,
+    playlist_all: bool = False,
 ) -> dict:
-    if multi_item:
-        # Sisipkan index unik di nama file, biar tiap entry carousel/galeri
-        # tidak saling timpa satu sama lain (sebelumnya SEMUA entry ditulis
-        # ke nama file yang sama persis, jadi cuma entry terakhir yang tersisa).
+    indexed = multi_item or playlist_all
+    if indexed:
+        # Sisipkan index unik di nama file, biar tiap entry carousel/galeri/
+        # playlist tidak saling timpa satu sama lain (sebelumnya SEMUA entry
+        # ditulis ke nama file yang sama persis, jadi cuma entry terakhir
+        # yang tersisa).
         outtmpl = f"{dest.with_suffix('')}-%(playlist_index,autonumber)d"
     else:
         outtmpl = str(dest.with_suffix(""))  # ekstensi diserahkan ke yt-dlp/postprocessor
@@ -313,13 +350,16 @@ def _build_ydl_opts(
         "quiet": True,
         "no_warnings": True,
         "noprogress": True,
-        "retries": 0,  # retry ditangani manual di sini
+        "retries": 0,  # retry koneksi ditangani manual (backoff) di download()
+        "fragment_retries": 3,  # retry per-fragmen HLS/DASH tetap milik yt-dlp
+        "continuedl": True,  # resume file parsial (.part), jangan ulang dari 0
+        "skip_unavailable_fragments": False,
         # Default matikan playlist expansion - Lumenfetch didesain buat download
         # satu konten per URL, bukan playlist manager. Kalau ini dibiarkan aktif
         # (default yt-dlp), URL yang kebetulan mengandung parameter playlist bisa
         # diam-diam mendownload banyak entry dan saling menimpa nama file yang sama.
-        # Cuma dimatikan (False) untuk kasus gambar multi-item yang memang disengaja.
-        "noplaylist": not multi_item,
+        # Cuma dibuka (False) untuk multi-item gambar & --playlist all yang disengaja.
+        "noplaylist": not indexed,
         # Player client alternatif buat YouTube - membantu mengurangi kemunculan
         # error "Sign in to confirm you're not a bot" tanpa perlu cookies.
         "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
@@ -347,22 +387,26 @@ def _build_ydl_opts(
         # selalu raise EmbedThumbnailPPError kalau dipaksakan, padahal video-nya
         # sendiri sudah berhasil didownload utuh. Jadi thumbnail sengaja di-skip
         # khusus buat WEBM, bukan sekadar gagal diam-diam.
+        postprocessors: list[dict] = []
         if choice.fmt in EMBEDDABLE_VIDEO_FORMATS:
-            opts["postprocessors"] = [{"key": "EmbedThumbnail"}]
+            postprocessors.append({"key": "EmbedThumbnail"})
             opts["writethumbnail"] = True
         else:
-            opts["postprocessors"] = []
             opts["writethumbnail"] = False
+        _apply_subs_metadata_opts(opts, postprocessors, choice)
+        opts["postprocessors"] = postprocessors
 
     elif choice.output_kind == "audio":
         opts["format"] = "bestaudio/best"
-        opts["postprocessors"] = [
+        postprocessors = [
             {
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": choice.fmt,
                 "preferredquality": _audio_quality_to_kbps(choice.quality),
             }
         ]
+        _apply_subs_metadata_opts(opts, postprocessors, choice, audio=True)
+        opts["postprocessors"] = postprocessors
 
     elif choice.output_kind == "image":
         if choice.is_video_thumbnail:
@@ -388,3 +432,16 @@ def _build_ydl_opts(
             opts["playlist_items"] = ",".join(str(i + 1) for i in choice.selected_indices)
 
     return opts
+
+
+def _apply_subs_metadata_opts(opts: dict, postprocessors: list[dict], choice, audio: bool = False) -> None:
+    """Tambahkan opsi subtitle & metadata ke ydl opts (default mati)."""
+    write_subs = bool(getattr(choice, "write_subs", False))
+    if write_subs:
+        langs = getattr(choice, "sub_langs", None) or list(SUBTITLE_LANGS_DEFAULT)
+        opts["writesubtitles"] = True
+        opts["subtitleslangs"] = langs
+        if bool(getattr(choice, "embed_subs", False)) and not audio:
+            opts["embedsubtitles"] = True
+    if bool(getattr(choice, "embed_metadata", False)):
+        postprocessors.append({"key": "FFmpegMetadata", "add_metadata": True})

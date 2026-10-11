@@ -237,6 +237,7 @@ def download_photos(
     output_folder: Path,
     naming_template: str,
     on_progress: Callable[[int, int], None] | None = None,
+    max_retry: int = 3,
 ) -> PhotoDownloadResult:
     """
     Download semua/foto tertentu dari carousel/single-photo Instagram.
@@ -247,7 +248,14 @@ def download_photos(
     sudah sempat kedownload sebelumnya jadi "yatim" - tersimpan di disk tapi
     tidak pernah dilaporkan ke user karena fungsinya keburu crash). Hasilnya
     melaporkan dengan akurat berapa yang sukses dan berapa yang gagal.
+
+    Tiap foto di-retry dengan backoff eksponensial (default 3x) untuk error
+    transien; error permanen (URL tanpa media) langsung dihitung gagal.
     """
+    import time as _time
+
+    from core.constants import RETRY_BASE_DELAY_SECONDS, RETRY_MAX_DELAY_SECONDS  # noqa: PLC0415
+
     output_folder.mkdir(parents=True, exist_ok=True)
 
     entries = content.entries
@@ -272,21 +280,30 @@ def download_photos(
         filename = build_filename(content.platform, title, ext, naming_template)
         dest = resolve_duplicate(output_folder / filename)
 
-        try:
-            media_url = entry.get("url") if isinstance(entry, dict) else None
-            if not media_url:
-                raise ValueError("entry tanpa URL media")
-            _download_url_to_file(media_url, dest)
-            final_path = dest if is_video_entry else convert_image(dest, target_ext)
-            results.append(final_path)
-        except Exception:  # noqa: BLE001
-            # File parsial sudah dibersihkan di _download_url_to_file (atomic
-            # write), tapi panggil lagi defensif untuk jalur lama / race.
-            try:
-                dest.unlink(missing_ok=True)
-            except OSError:
-                pass
+        media_url = entry.get("url") if isinstance(entry, dict) else None
+        if not media_url:
             failed_count += 1
+        else:
+            ok = False
+            for attempt in range(max(0, max_retry) + 1):
+                try:
+                    _download_url_to_file(media_url, dest)
+                    final_path = dest if is_video_entry else convert_image(dest, target_ext)
+                    results.append(final_path)
+                    ok = True
+                    break
+                except Exception:  # noqa: BLE001
+                    # File parsial sudah dibersihkan di _download_url_to_file
+                    # (atomic write), tapi panggil lagi defensif untuk race.
+                    try:
+                        dest.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+                    if attempt < max_retry:
+                        delay = min(RETRY_BASE_DELAY_SECONDS * (2.0**attempt), RETRY_MAX_DELAY_SECONDS)
+                        _time.sleep(delay)
+            if not ok:
+                failed_count += 1
 
         if on_progress:
             try:

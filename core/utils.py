@@ -63,10 +63,41 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-# ANOMALI LAMA: Path("config.json") relatif ke CWD, sehingga config
-# "tercecer" kalau user menjalankan dari folder berbeda (lihat README).
-# Sekarang absolut ke project root (folder yang berisi main.py).
-CONFIG_PATH = _project_root() / "config.json"
+def _user_data_dir() -> Path:
+    """Direktori data user per-OS (tanpa dependency platformdirs)."""
+    import os
+    import sys
+
+    home = Path.home()
+    if sys.platform.startswith("win"):
+        base = os.environ.get("APPDATA")
+        if base:
+            return Path(base) / "lumenfetch"
+        return home / "AppData" / "Roaming" / "lumenfetch"
+    if sys.platform == "darwin":
+        return home / "Library" / "Application Support" / "lumenfetch"
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    if xdg:
+        return Path(xdg) / "lumenfetch"
+    return home / ".config" / "lumenfetch"
+
+
+def _legacy_config_path() -> Path:
+    return _project_root() / "config.json"
+
+
+def _resolve_config_path() -> Path:
+    """Prioritas: CONFIG_PATH yang di-monkeypatch test > user dir.
+
+    Fungsi ini dipanggil dinamis (bukan sekali di import) agar
+    `monkeypatch.setattr(utils, "CONFIG_PATH", ...)` tetap dihormati.
+    """
+    return CONFIG_PATH
+
+
+# Lokasi kanonis: user dir. File lama di project root dimigrasi otomatis
+# sekali saat load pertama (lihat _migrate_legacy_config).
+CONFIG_PATH = _user_data_dir() / "config.json"
 
 
 def get_default_download_folder() -> str:
@@ -132,15 +163,45 @@ def _coerce_config(data: dict) -> dict:
     return merged
 
 
+def _canonical_config_path() -> Path:
+    return _user_data_dir() / "config.json"
+
+
+def _migrate_legacy_config() -> None:
+    """Salin config lama (project root) ke user dir bila user dir belum ada.
+
+    Dilewati bila CONFIG_PATH sedang di-monkeypatch test ke lokasi lain.
+    """
+    try:
+        target = _resolve_config_path()
+        if target.resolve() != _canonical_config_path().resolve():
+            return
+        if target.exists():
+            return
+        legacy = _legacy_config_path()
+        # Jangan migrasi file yang cuma berisi default/Contoh history lokal dev.
+        if not legacy.exists() or legacy.resolve() == target.resolve():
+            return
+        data = json.loads(legacy.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    except (OSError, ValueError):
+        pass
+
+
 def load_config() -> dict:
     """Baca config.json, buat default kalau belum ada / rusak."""
-    if not CONFIG_PATH.exists():
+    _migrate_legacy_config()
+    path = _resolve_config_path()
+    if not path.exists():
         fresh = get_default_config()
         save_config(fresh)
         return fresh
 
     try:
-        with CONFIG_PATH.open("r", encoding="utf-8") as f:
+        with path.open("r", encoding="utf-8") as f:
             data = json.load(f)
         return _coerce_config(data)
     except (json.JSONDecodeError, OSError, ValueError, AttributeError):
@@ -161,13 +222,30 @@ def save_config(config: dict) -> None:
     utils.py sengaja tidak nge-print apa pun ke user (module ini "helper
     murni" - lihat CONTRIBUTING.md, tidak boleh tahu soal CLI/rich) - kalau
     perlu notifikasi ke user, itu tanggung jawab caller.
+
+    Thread-safe untuk batch paralel via lock proses-lokal.
     """
-    try:
-        CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with CONFIG_PATH.open("w", encoding="utf-8") as f:
-            json.dump(config, f, indent=2, ensure_ascii=False)
-    except OSError:
-        pass
+    lock = _history_lock()
+    with lock:
+        try:
+            path = _resolve_config_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("w", encoding="utf-8") as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+        except OSError:
+            pass
+
+
+_history_lock_instance = None
+
+
+def _history_lock():
+    import threading
+
+    global _history_lock_instance
+    if _history_lock_instance is None:
+        _history_lock_instance = threading.Lock()
+    return _history_lock_instance
 
 
 def add_history_entry(config: dict, entry: dict) -> None:
@@ -363,8 +441,10 @@ def convert_image(src: Path, target_ext: str) -> Path:
         # Hindari overwrite file orang lain; cari nama unik.
         dest = resolve_duplicate(dest)
     try:
+        from core.ffmpeg import exe as _ffmpeg_exe  # noqa: PLC0415 - hindari circular import
+
         subprocess.run(
-            ["ffmpeg", "-y", "-i", str(src), str(dest)],
+            [_ffmpeg_exe(), "-y", "-i", str(src), str(dest)],
             check=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

@@ -19,6 +19,8 @@ from core.constants import (
     AUDIO_QUALITIES,
     IMAGE_FORMATS,
     LOSSLESS_AUDIO_FORMATS,
+    PLAYLIST_MODES,
+    SUBTITLE_LANGS_DEFAULT,
     VERSION,
     VIDEO_FORMATS,
     VIDEO_QUALITIES,
@@ -37,6 +39,7 @@ __all__ = [
     "AUDIO_QUALITIES",
     "IMAGE_FORMATS",
     "LOSSLESS_AUDIO_FORMATS",
+    "PLAYLIST_MODES",
 ]
 
 
@@ -47,6 +50,11 @@ class DownloadChoice:
     fmt: str = ""
     selected_indices: list[int] | None = None  # untuk carousel
     is_video_thumbnail: bool = False  # True kalau ini "Gambar (thumbnail)" dari menu VIDEO
+    playlist_mode: str = "single"  # "single" | "all" (playlist murni)
+    write_subs: bool = False
+    sub_langs: list[str] | None = None
+    embed_subs: bool = False
+    embed_metadata: bool = False
 
 
 def show_header(version: str = VERSION) -> None:
@@ -131,6 +139,37 @@ def ask_output_type_for_video() -> str:
     raw = Prompt.ask("→", default="1")
     mapping = {"1": "video", "2": "audio", "3": "image"}
     return mapping.get(str(raw).strip(), "video")
+
+
+def ask_playlist_mode(total: int) -> str:
+    """Tanya mode playlist murni: 1 video pertama (default) atau semua."""
+    console.print(f"\nURL ini playlist berisi {total} video:")
+    console.print("  [1] Download video pertama saja  (default)")
+    console.print(f"  [2] Download semua ({total} video)")
+    raw = Prompt.ask("→", default="1")
+    return "all" if str(raw).strip() == "2" else "single"
+
+
+def ask_subtitle_options(output_kind: str) -> tuple[bool, list[str] | None, bool]:
+    """Return (write_subs, sub_langs, embed_subs). Default mati (backward compat)."""
+    if output_kind not in ("video", "audio"):
+        return False, None, False
+    console.print("\nDownload subtitle?")
+    console.print("  [1] Tidak  (default)")
+    console.print("  [2] Ya, download file subtitle")
+    raw = Prompt.ask("→", default="1")
+    if str(raw).strip() != "2":
+        return False, None, False
+    langs_raw = Prompt.ask("Bahasa subtitle (koma, mis. en,id)", default=",".join(SUBTITLE_LANGS_DEFAULT))
+    langs = [p.strip().lower() for p in str(langs_raw).replace(",", " ").split() if p.strip()]
+    embed = Confirm.ask("Embed subtitle ke file hasil (khusus mp4/mkv)?", default=False)
+    return True, langs or list(SUBTITLE_LANGS_DEFAULT), bool(embed)
+
+
+def ask_embed_metadata(output_kind: str) -> bool:
+    if output_kind not in ("video", "audio"):
+        return False
+    return Confirm.ask("Embed metadata (judul/artis) ke file hasil?", default=False)
 
 
 def _build_size_labels(
