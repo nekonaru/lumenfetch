@@ -19,6 +19,7 @@ Lumenfetch sengaja dipisah per tanggung jawab, tolong dijaga konsistensinya kala
 |------|-----------------|-------------|
 | `core/constants.py` | Nilai shared (versi, format, batas) | Logic bisnis |
 | `core/errors.py` | Klasifikasi error + pesan ramah terpusat | Logic download/deteksi |
+| `core/i18n.py` | Katalog string UI (EN default, ID opsional) | Logic bisnis |
 | `core/ffmpeg.py` | Deteksi ffmpeg sistem dulu, bundled fallback | Download/deteksi |
 | `core/log.py` | Logging file terpusat | Tampilan rich/menu |
 | `core/detector.py` | Deteksi info video YouTube via yt-dlp | Mendownload apa pun |

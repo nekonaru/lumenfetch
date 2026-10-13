@@ -4,12 +4,12 @@
 
 **Save any YouTube video as `.mp4` or `.mp3`, with quality picker, subtitles, and playlists, right from your terminal.**
 
-![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?style=flat-square&logo=python&logoColor=white)
-![PyPI](https://img.shields.io/pypi/v/lumenfetch?style=flat-square&color=blue)
-![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)
-![Status](https://img.shields.io/badge/Status-Active-brightgreen?style=flat-square)
-![Tests](https://github.com/nekonaru/lumenfetch/actions/workflows/tests.yml/badge.svg)
+[![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![PyPI](https://img.shields.io/pypi/v/lumenfetch?style=flat-square&color=blue)](https://pypi.org/project/lumenfetch/)
+[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)](https://github.com/nekonaru/lumenfetch/releases)
+[![Status](https://img.shields.io/badge/Status-Active-brightgreen?style=flat-square)](https://github.com/nekonaru/lumenfetch)
+[![Tests](https://github.com/nekonaru/lumenfetch/actions/workflows/tests.yml/badge.svg)](https://github.com/nekonaru/lumenfetch/actions)
 
 </div>
 
@@ -359,6 +359,7 @@ lumenfetch/
 ├── core/
 │   ├── constants.py           # Single source of truth (version, formats, limits)
 │   ├── errors.py              # Central error taxonomy (classification + friendly messages)
+│   ├── i18n.py                # UI strings (English default, Indonesian via --ui-lang)
 │   ├── ffmpeg.py              # System ffmpeg first, bundled fallback
 │   ├── log.py                 # Central file logging
 │   ├── downloader.py          # MP4 download / MP3 extract + resume + retry backoff
