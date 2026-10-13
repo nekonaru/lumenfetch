@@ -14,6 +14,7 @@ import yt_dlp
 
 from core.constants import YOUTUBE_HOSTS
 from core.errors import DetectionError, classify_error, detection_message
+from core.log import get_ydl_logger
 
 __all__ = [
     "DetectionError",
@@ -99,6 +100,9 @@ def _base_ydl_opts() -> dict:
     return {
         "quiet": True,
         "no_warnings": True,
+        # Alihkan noise mentah yt-dlp (baris ERROR:/WARNING:) ke file log,
+        # terminal hanya menampilkan pesan ramah via rich.
+        "logger": get_ydl_logger(),
         "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
     }
 

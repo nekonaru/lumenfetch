@@ -36,6 +36,7 @@ from core.errors import (
     classify_error,
     friendly_message,
 )
+from core.log import get_ydl_logger
 from core.options import DownloadChoice
 from core.utils import (
     _iter_dir_files,
@@ -267,6 +268,8 @@ def _build_ydl_opts(
         "quiet": True,
         "no_warnings": True,
         "noprogress": True,
+        # Lihat detector._base_ydl_opts: noise mentah ke file log saja.
+        "logger": get_ydl_logger(),
         "retries": 0,  # retry koneksi ditangani manual (backoff) di download()
         "fragment_retries": 3,
         "continuedl": True,  # resume file parsial (.part)

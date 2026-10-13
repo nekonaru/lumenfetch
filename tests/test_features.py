@@ -303,3 +303,38 @@ def test_ffmpeg_prefers_system(monkeypatch):
     monkeypatch.setattr(ffmpeg, "_verify", lambda *a, **k: True)
     assert ffmpeg.is_available() is True
     assert ffmpeg.ensure() is True
+
+
+def test_ydl_logger_swallows_stderr(capsys, tmp_path, monkeypatch):
+    import logging
+
+    from core import log
+
+    monkeypatch.setattr(utils, "_user_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(logging.getLogger("lumenfetch.ydl"), "_lumenfetch_configured", False, raising=False)
+    # Hapus handler lama agar terkonfigurasi ulang ke tmp_path.
+    logging.getLogger("lumenfetch.ydl").handlers.clear()
+
+    ydl_log = log.get_ydl_logger()
+    ydl_log.error("ERROR: Could not copy Chrome cookie database")
+
+    captured = capsys.readouterr()
+    assert "Could not copy" not in captured.out
+    assert "Could not copy" not in captured.err
+    assert "Could not copy" in (tmp_path / "lumenfetch.log").read_text(encoding="utf-8")
+    logging.getLogger("lumenfetch.ydl").handlers.clear()
+    if hasattr(logging.getLogger("lumenfetch.ydl"), "_lumenfetch_configured"):
+        delattr(logging.getLogger("lumenfetch.ydl"), "_lumenfetch_configured")
+
+
+def test_base_opts_include_quiet_logger(tmp_path):
+    from core import detector, downloader
+    from core.options import DownloadChoice
+
+    choice_opts = detector._base_ydl_opts()
+    assert choice_opts["quiet"] is True
+    assert hasattr(choice_opts["logger"], "error")
+
+    dl_opts = downloader._build_ydl_opts(DownloadChoice(output_kind="video", quality="Best", fmt="mp4"), tmp_path / "v.mp4")
+    assert dl_opts["quiet"] is True
+    assert hasattr(dl_opts["logger"], "error")

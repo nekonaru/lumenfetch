@@ -51,4 +51,25 @@ def get_logger(name: str = _LOGGER_NAME) -> logging.Logger:
     return logging.getLogger(name)
 
 
-__all__ = ["setup", "get_logger", "log_file_path"]
+def get_ydl_logger() -> logging.Logger:
+    """Logger khusus untuk yt-dlp: semua output mentahnya (termasuk baris
+    `ERROR:` yang tidak bisa dimatikan via `quiet`) dialihkan ke file log,
+    TIDAK ke terminal. Terminal hanya menampilkan pesan ramah via rich."""
+    name = f"{_LOGGER_NAME}.ydl"
+    logger = logging.getLogger(name)
+    if getattr(logger, "_lumenfetch_configured", False):
+        return logger
+    logger.setLevel(logging.DEBUG)
+    logger.propagate = False
+    try:
+        fh = logging.FileHandler(str(log_file_path()), encoding="utf-8")
+        fh.setLevel(logging.DEBUG)
+        fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        logger.addHandler(fh)
+    except OSError:
+        logger.addHandler(logging.NullHandler())
+    logger._lumenfetch_configured = True  # type: ignore[attr-defined]
+    return logger
+
+
+__all__ = ["setup", "get_logger", "get_ydl_logger", "log_file_path"]
