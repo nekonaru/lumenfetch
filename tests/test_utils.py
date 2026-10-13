@@ -379,15 +379,18 @@ def test_estimate_average_speed_returns_none_when_no_data():
 
 
 def test_format_eta_under_a_minute():
-    assert utils.format_eta(50_000_000, 5_000_000) == "~10 detik"
+    assert utils.format_eta(50_000_000, 5_000_000) == "~10 seconds"
+    assert utils.format_eta(50_000_000, 5_000_000, lang="id") == "~10 detik"
 
 
 def test_format_eta_in_minutes():
-    assert utils.format_eta(600_000_000, 5_000_000) == "~2 menit"
+    assert utils.format_eta(600_000_000, 5_000_000) == "~2 minutes"
+    assert utils.format_eta(600_000_000, 5_000_000, lang="id") == "~2 menit"
 
 
 def test_format_eta_in_hours():
-    assert utils.format_eta(50_000_000_000, 5_000_000) == "~2.8 jam"
+    assert utils.format_eta(50_000_000_000, 5_000_000) == "~2.8 hours"
+    assert utils.format_eta(50_000_000_000, 5_000_000, lang="id") == "~2.8 jam"
 
 
 def test_format_eta_none_when_missing_data():

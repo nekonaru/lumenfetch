@@ -119,6 +119,7 @@ DEFAULT_CONFIG = {
     "max_retry": 3,
     "cookies_browser": None,
     "cookies_file": None,
+    "ui_lang": "en",
     "history": [],
 }
 
@@ -168,6 +169,9 @@ def _coerce_config(data: dict) -> dict:
         merged["cookies_file"] = cf or None
     else:
         merged["cookies_file"] = None
+    # ui_lang: hanya "en"/"id" yang sah, selain itu fallback ke default.
+    lang = str(merged.get("ui_lang", "")).strip().lower()
+    merged["ui_lang"] = lang if lang in ("en", "id") else "en"
     return merged
 
 
@@ -613,8 +617,16 @@ def estimate_average_speed_bps(history: list[dict], sample_size: int = 10) -> fl
     return sum(speeds) / len(speeds)
 
 
-def format_eta(size_bytes: int | None, speed_bps: float | None) -> str | None:
+def format_eta(size_bytes: int | None, speed_bps: float | None, lang: str | None = None) -> str | None:
     """Ubah estimasi ukuran + kecepatan jadi teks perkiraan waktu ("~14 detik", "~2 menit"). None kalau datanya kurang."""
+    from core.i18n import DEFAULT_LANG, STRINGS, SUPPORTED_LANGS, get_lang  # noqa: PLC0415
+
+    if lang not in SUPPORTED_LANGS:
+        lang = get_lang()
+        if lang not in SUPPORTED_LANGS:
+            lang = DEFAULT_LANG
+    catalog = STRINGS.get(lang, STRINGS[DEFAULT_LANG])
+
     try:
         if not size_bytes or not speed_bps or float(speed_bps) <= 0:
             return None
@@ -623,9 +635,9 @@ def format_eta(size_bytes: int | None, speed_bps: float | None) -> str | None:
         return None
 
     if seconds < 60:
-        return f"~{seconds:.0f} detik"
+        return catalog["eta.second"].format(n=f"{seconds:.0f}")
     minutes = seconds / 60
     if minutes < 60:
-        return f"~{minutes:.0f} menit"
+        return catalog["eta.minute"].format(n=f"{minutes:.0f}")
     hours = minutes / 60
-    return f"~{hours:.1f} jam"
+    return catalog["eta.hour"].format(n=f"{hours:.1f}")

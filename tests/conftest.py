@@ -22,3 +22,12 @@ SAMPLE_VIDEO_FORMATS = [
 def _no_sleep(monkeypatch):
     monkeypatch.setattr(_time, "sleep", lambda s: None)
     yield
+
+
+@pytest.fixture(autouse=True)
+def _default_lang():
+    from core.i18n import set_lang
+
+    set_lang("en")
+    yield
+    set_lang("en")

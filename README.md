@@ -1,102 +1,120 @@
 <div align="center">
 
-### 📥 Lumenfetch
-**YouTube downloader buat terminal - MP4 & MP3. Paste link, pilih quality, beres.**
+# 📥 Lumenfetch: YouTube Downloader
 
-<br>
+**Save any YouTube video as `.mp4` or `.mp3`, with quality picker, subtitles, and playlists, right from your terminal.**
 
 ![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?style=flat-square&logo=python&logoColor=white)
+![PyPI](https://img.shields.io/pypi/v/lumenfetch?style=flat-square&color=blue)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)
 ![Status](https://img.shields.io/badge/Status-Active-brightgreen?style=flat-square)
 ![Tests](https://github.com/nekonaru/lumenfetch/actions/workflows/tests.yml/badge.svg)
-![PyPI](https://img.shields.io/pypi/v/lumenfetch?style=flat-square&logo=pypi&logoColor=white)
 
 </div>
 
-## ✨ Tentang Project
+**English** | [Bahasa Indonesia](README.id.md)
 
-**Lumenfetch** adalah CLI Python buat download video YouTube jadi **MP4** atau ekstrak audionya jadi **MP3** - cukup paste link, dia otomatis deteksi judul, durasi, dan estimasi ukuran, lalu kasih kamu opsi quality yang relevan. Didukung [yt-dlp](https://github.com/yt-dlp/yt-dlp) di belakang layar, plus `curl_cffi` buat lolos bot-check YouTube.
+## ✨ About
 
-> _"Satu command, langsung MP4/MP3."_
+**Lumenfetch** is a lightweight Python CLI that downloads YouTube videos as **MP4** or extracts their audio as **MP3**. Just paste a link and it auto-detects the title, duration, and estimated file size, then offers the relevant quality options. Powered by [yt-dlp](https://github.com/yt-dlp/yt-dlp) under the hood, plus `curl_cffi` to pass YouTube's bot checks.
 
-## 🎯 Fitur
+> _"One command, straight to MP4/MP3."_
 
-| Fitur | Keterangan |
-|-------|------------|
-| 🔍 **Auto-detect** | Judul, durasi, dan estimasi ukuran terdeteksi otomatis |
-| 🎛 **Opsi dinamis** | Menu quality menyesuaikan (video / audio saja) |
-| 🎞 **Video MP4** | Pilihan quality Best/1080p/720p/480p/360p/Worst, thumbnail otomatis ter-embed |
-| 🎵 **Audio MP3** | Pilihan bitrate Best/320kbps/192kbps/128kbps |
-| 📜 **Playlist** | Default video pertama saja; `--playlist all` untuk semua sekaligus |
-| 💬 **Subtitle & metadata** | Download subtitle (SRT) + embed ke MP4, opsional via flag/CLI |
-| 📋 **Auto-paste clipboard** | Kalau ada link valid di clipboard, langsung ditawarkan tanpa perlu paste manual - tidak akan nanya ulang isi clipboard yang sama berkali-kali |
-| 📊 **Progress bar real-time** | Kecepatan, ukuran, dan estimasi waktu tersisa lewat `rich` |
-| 📐 **Estimasi ukuran & waktu** | Muncul di menu pilih quality (video/audio), dihitung dari data yt-dlp + kecepatan rata-rata download kamu sebelumnya |
-| 🔄 **Auto-retry** | Error koneksi dicoba ulang otomatis (default 3x), error fatal (private/invalid) langsung dilaporkan |
-| 🗂 **Riwayat download** | 20 entri terakhir tersimpan, bisa dilihat kapan saja lewat command `history` |
-| ⚙️ **Pengaturan persisten** | Folder download (default: folder Downloads OS, ganti kapan saja), max retry, auto-paste, dan naming template diingat lewat `config.json` |
-| 🍪 **Cookies browser/file** | Opsional, buat video age-restricted/private - dari Chrome/Firefox/Edge/dll atau file `cookies.txt` |
-| 🧼 **Nama file aman** | Karakter ilegal disanitasi, duplikat otomatis dikasih suffix `(1)`, `(2)`, dst |
-| 🔔 **Auto-check update yt-dlp** | Tiap dibuka, dicek ke PyPI apakah ada versi yt-dlp lebih baru - gagal cek (mis. offline) diam-diam diabaikan |
+## 🎯 Features
+
+| Feature | Description |
+|-------|-------------|
+| 🔍 **Auto-detect** | Title, duration, and size estimates detected automatically |
+| 🎛 **Dynamic options** | Quality menu adapts itself (video vs audio) |
+| 🎞 **MP4 video** | Quality Best/1080p/720p/480p/360p/Worst, thumbnail auto-embedded |
+| 🎵 **MP3 audio** | Bitrate Best/320kbps/192kbps/128kbps |
+| 📜 **Playlists** | First video only by default; `--playlist all` for the whole list |
+| 💬 **Subtitles & metadata** | Download subtitles + embed into MP4, optional via flags |
+| 🌍 **English/Indonesian UI** | Display language via `--ui-lang id`, `LUMENFETCH_LANG`, or remembered setting |
+| 📋 **Clipboard auto-paste** | A valid link in your clipboard is offered right away, never asked twice for the same content |
+| 📊 **Real-time progress** | Speed, size, and ETA via `rich` |
+| 📐 **Size & time estimates** | Shown next to every quality option, computed from yt-dlp data + your own past download speeds |
+| 🔄 **Auto-retry & resume** | Connection errors retried with exponential backoff (default 3x); partial `.part` files resumed, not restarted |
+| 🗂 **Download history** | Last 20 entries, viewable anytime with the `history` command |
+| ⚙️ **Persistent settings** | Download folder, max retry, auto-paste, and naming template remembered |
+| 🍪 **Browser/file cookies** | Optional, for age-restricted or private videos - from Chrome/Firefox/Edge/etc. or a `cookies.txt` file |
+| 🧼 **Safe filenames** | Illegal characters sanitized, duplicates get `(1)`, `(2)` suffixes |
+| 🔔 **yt-dlp update check** | Checks PyPI for a newer yt-dlp on every start, silently ignored when offline |
 
 ## 📦 Requirements
 
-- **Python** 3.9 atau lebih baru
-- **Koneksi internet**
+- **Python** 3.9 or newer
+- **Internet connection**
+- Libraries: `yt-dlp`, `rich`, `curl_cffi`, auto-installed with `lumenfetch`, no manual install needed
 
-> ffmpeg **tidak perlu diinstall manual** - Lumenfetch otomatis mengunduh dan memakai versi bundled-nya sendiri (lewat `static-ffmpeg`) begitu pertama kali dijalankan, persis seperti cara kerja `ffmpeg-static` di project Node.js.
+> ffmpeg **does not need manual install** - Lumenfetch uses your system ffmpeg if present, otherwise it automatically downloads its own bundled copy (via `static-ffmpeg`) on first use, just like `ffmpeg-static` in Node.js projects.
 
-### Belum pernah pakai terminal? Ikuti ini dulu
+### Never used a terminal? Start here
 
 <details>
-<summary><b>🪟 Cara buka terminal di Windows</b></summary>
+<summary><b>🪟 Opening a terminal on Windows</b></summary>
 
-1. Tekan tombol **Windows**, ketik `PowerShell`, lalu tekan **Enter**
-2. Jendela hitam/biru akan terbuka. Itu tempat kamu mengetik perintah
-3. Semua perintah `python ...` atau `pip ...` di panduan ini diketik di jendela itu, lalu tekan **Enter**
+1. Press the **Windows** key, type `PowerShell`, then press **Enter**
+2. A black/blue window opens. Type all `python ...` / `pip ...` commands from this guide there, then press **Enter**
 
 </details>
 
 <details>
-<summary><b>🍎 Cara buka terminal di macOS</b></summary>
+<summary><b>🍎 Opening a terminal on macOS</b></summary>
 
-1. Tekan **Cmd + Spasi**, ketik `Terminal`, lalu tekan **Enter**
-2. Ketik perintah-perintah di panduan ini di situ, lalu tekan **Enter**
+1. Press **Cmd + Space**, type `Terminal`, then press **Enter**
+2. Type the commands from this guide there, then press **Enter**
 
 </details>
 
 <details>
-<summary><b>🐧 Cara buka terminal di Linux</b></summary>
+<summary><b>🐧 Opening a terminal on Linux</b></summary>
 
-Tekan **Ctrl + Alt + T**, atau cari aplikasi "Terminal" di menu aplikasi.
+Press **Ctrl + Alt + T**, or find the "Terminal" app in your app menu.
 
 </details>
 
-### Belum punya Python?
+### No Python yet?
 
-1. Buka [python.org/downloads](https://www.python.org/downloads/) dan unduh versi terbaru
-2. **Khusus Windows**: saat instalasi, centang dulu kotak **"Add Python to PATH"** di layar pertama sebelum klik Install
-3. Setelah selesai install, cek dengan:
+1. Open [python.org/downloads](https://www.python.org/downloads/) and download the latest version
+2. **Windows only**: on the first installer screen, tick **"Add Python to PATH"** before clicking Install. If you skip this, the `python` command won't be recognized later
+3. After installing, open a terminal (see above) and check with:
 
 ```bash
 python --version
-# atau
+# or
 python3 --version
 ```
 
-## 🚀 Instalasi
+If a version number shows up (e.g. `Python 3.12.1`), you're ready.
 
-**Cara cepat (dari PyPI):**
+## 🚀 Installation
+
+### Option A: Install from PyPI (easiest)
+
 ```bash
 pip install lumenfetch
-lumenfetch
 ```
 
-**Dari source (untuk development):**
+> If `pip` is not recognized, try:
+> ```bash
+> python -m pip install lumenfetch
+> ```
+
+> If you get an `externally-managed-environment` error (usually on Linux):
+> ```bash
+> pip install lumenfetch --break-system-packages
+> ```
+
+Once installed, the `lumenfetch` command works from any terminal, continue to [Usage](#️-usage).
+
+### Option B: Install from source (for development / reading the code)
+
+**1. Get the code**
 
 <details>
-<summary><b>Punya Git terinstall</b></summary>
+<summary><b>Have Git installed</b></summary>
 
 ```bash
 git clone https://github.com/nekonaru/lumenfetch.git
@@ -106,102 +124,52 @@ cd lumenfetch
 </details>
 
 <details>
-<summary><b>Tidak punya Git</b></summary>
+<summary><b>No Git</b></summary>
 
-1. Buka halaman repository di GitHub
-2. Klik tombol hijau **`Code`** → pilih **`Download ZIP`**
-3. Ekstrak file ZIP yang terunduh ke folder pilihanmu
-4. Di terminal, masuk ke folder hasil ekstrak
+1. Open the repository page on GitHub
+2. Click the green **`Code`** button → choose **`Download ZIP`**
+3. Extract the downloaded ZIP to a folder of your choice
+4. In a terminal, enter the extracted folder, e.g.:
+
+```bash
+cd Downloads/lumenfetch-main
+```
 
 </details>
 
-**2. Install dependency**
-```bash
-pip install -r requirements.txt
-```
-
-> Kalau muncul error `externally-managed-environment` (biasanya di Linux):
-> ```bash
-> pip install -r requirements.txt --break-system-packages
-> ```
-
-**3. (Opsional) Install sebagai command `lumenfetch`**
+**2. Install in "editable" mode**
 ```bash
 pip install -e .
-lumenfetch --version
 ```
 
-## 🖥️ Cara Pakai
+> Same as Option A, append `--break-system-packages` if you hit the `externally-managed-environment` error.
 
-**Jalankan:**
+This also registers the `lumenfetch` command, but it uses the code straight from this folder, handy if you want to modify the code and see results without reinstalling.
+
+## 🖥️ Usage
+
+**Run:**
 ```bash
-python main.py
-# atau non-interaktif:
-python main.py "https://youtube.com/watch?v=..." -t video -f mp4 -q 720p -y
-python main.py --batch daftar.txt --jobs 2
-python main.py --history
-python main.py --help
+lumenfetch
 ```
 
-**Flag CLI:**
+> If you installed from source without `pip install -e .`, run via `python main.py` from inside the project folder instead, but the editable install above is recommended.
+
+**Paste a YouTube URL when asked:**
 ```
--t/--type {video,audio}  -f/--format {mp4,mp3}  -q/--quality
--o/--output  --cookies  --cookies-file  --max-retry  --playlist {single,all}
---subs  --sub-langs en,id  --embed-subs  --embed-metadata
---batch file.txt  --jobs 1-4  --no-clipboard  -y/--yes  -v/--verbose
---history  --version
+Masukkan URL YouTube (q: keluar, history, settings, help): https://youtube.com/watch?v=...
 ```
 
-**Masukkan URL saat diminta:**
+If there is a valid link in your clipboard, Lumenfetch offers it first - just answer `y` to use it.
+
+**Pick an output type:**
 ```
-Masukkan URL (q: keluar, history, settings, help): https://youtube.com/watch?v=...
+Pilih tipe output:
+  [1] Video (MP4)
+  [2] Audio (MP3)
 ```
 
-Kalau ada link valid di clipboard, Lumenfetch akan menawarkannya duluan - tinggal jawab `y` kalau mau pakai itu.
-
-**Link YouTube otomatis terdeteksi, lalu menu menyesuaikan:**
-
-- **Video** → pilih output Video (MP4) / Audio (MP3) → pilih quality
-- **Stream audio** → langsung pilih bitrate MP3
-- **Playlist** → default video pertama; `--playlist all` untuk semua
-
-**Konfirmasi nama file, lalu proses download berjalan** dengan progress bar real-time (kecepatan, ukuran, ETA). Tekan `Ctrl+C` kapan saja untuk membatalkan dengan aman.
-
-## ⌨️ Command
-
-Diketik langsung di prompt utama, menggantikan URL:
-
-| Command | Fungsi |
-|---------|--------|
-| `history` | Lihat 20 riwayat download terakhir (tanggal, judul, format, ukuran, status) |
-| `settings` | Ganti folder default, max retry, auto-paste clipboard, naming template, atau cookies |
-| `help` | Tampilkan panduan singkat di dalam aplikasi |
-| `q` / `quit` | Keluar dari aplikasi |
-| `Ctrl+C` | Batalkan download yang sedang berjalan |
-
-## 🍪 Cookies (Opsional)
-
-Video age-restricted atau private butuh login. Kalau ketemu error semacam itu, aktifkan salah satu:
-
-**A. Cookies dari browser:**
-1. Buka Lumenfetch, ketik `settings`
-2. Pilih `[5] Pakai cookies dari browser/file`
-3. Pilih browser di mana kamu sudah login YouTube (Chrome/Firefox/Edge/Brave/Opera/Vivaldi/Safari)
-
-Setelah aktif, Lumenfetch akan meminjam cookies dari browser itu setiap kali mendeteksi atau mendownload konten, seolah request-nya datang dari sesi browser kamu yang sudah login. Cukup pilih `[1] Nonaktifkan` di menu yang sama kalau mau matikan lagi.
-
-> **Penting:** browser yang dipilih harus **benar-benar tertutup total** saat download (file cookies dikunci selama browser terbuka - errornya `Could not copy ... cookie database`). Cek Task Manager dan matikan semua proses browser tersebut (Edge/Chrome sering masih jalan di background).
-
-> **Alternatif paling reliable (disarankan kalau error cookies terus muncul):** pakai **file cookies** yang works walau browser terbuka:
-> 1. Install extension **"Get cookies.txt LOCALLY"** (Chrome/Edge/Firefox) di browser
-> 2. Buka youtube.com (pastikan sudah login), klik extension → **Export** → simpan mis. `D:\cookies.txt`
-> 3. Di Lumenfetch: `settings` → `[5]` → `[1] Nonaktifkan` → isi path file cookies tadi
-> 4. Atau via CLI: `python main.py <URL> --cookies-file D:\cookies.txt`
-
-## 📐 Estimasi Ukuran & Waktu Download
-
-Pas milih quality buat video atau audio, Lumenfetch nampilin perkiraan ukuran file dan waktu download di sebelah tiap opsi:
-
+**Pick a quality (size & ETA estimates included):**
 ```
 Pilih Quality:
   [1] Best   (default)  (~147.8 MB, ~31 detik)
@@ -210,132 +178,276 @@ Pilih Quality:
   [4] 480p               (~42.9 MB, ~9 detik)
 ```
 
-Cara kerjanya:
+**Confirm the filename, then the download runs** with a real-time progress bar (speed, size, ETA). Press `Ctrl+C` anytime to cancel safely.
 
-- **Ukuran** dihitung dari data yang yt-dlp udah dapat pas proses "Mendeteksi konten..." (gak ada request tambahan ke platform, jadi gak bikin lambat)
-- **Waktu** dihitung dari kecepatan rata-rata beberapa download terakhir kamu yang sukses (bukan angka tebakan generik) - makin sering pakai Lumenfetch, makin akurat estimasinya
-- Kalau datanya gak cukup buat ngasih estimasi yang jujur (mis. platform gak expose ukuran file sama sekali, quality tier yang diminta gak tersedia buat konten itu, atau ini baru pertama kali pakai aplikasi jadi belum ada riwayat kecepatan) - estimasinya gak ditampilin sama sekali, daripada nampilin angka ngasal
-
-## 🔔 Auto-check Update yt-dlp
-
-YouTube sering ubah sistemnya - jadi `yt-dlp` juga perlu sering di-update biar tetap kompatibel. Ini bukan "sekali fix, selesai selamanya", tapi proses berkelanjutan (mirip antivirus yang perlu update rutin).
-
-Buat bantu itu, tiap kali Lumenfetch dibuka, otomatis dicek ke PyPI apakah ada versi `yt-dlp` yang lebih baru dari yang terinstall. Kalau ada, muncul notice kayak gini:
-
+**Done! 🎉**
 ```
-🔔 Update yt-dlp tersedia
-yt-dlp kamu versi 2026.1.1, versi terbaru 2026.8.19 sudah tersedia.
-pip install --upgrade yt-dlp
+✅ Selesai!
+   File  : C:\Users\user\Downloads\YouTube_Lofi-Hip-Hop-Radio_2026.mp4
+   Ukuran: 81.1 MB
+   Waktu : 17 detik
 ```
 
-Tinggal jalankan command yang ditampilkan. Kalau lagi offline atau PyPI nggak bisa diakses, pengecekan ini gagal diam-diam dan **tidak** menghalangi kamu pakai aplikasinya.
+## ↻ Resume Otomatis
 
-## 🗂 Naming & Konfigurasi
+If a download stops halfway (connection drops, terminal closed), the partial `.part` file stays on disk.
 
-Nama file mengikuti template di `config.json` (default: `%(platform)s_%(title)s_%(year)s`), contoh hasil:
+Just run the same URL again and yt-dlp **resumes** from where it stopped instead of starting over. Connection errors are also retried automatically with exponential backoff (2s, 4s, 8s... max 30s).
+
+## ⚙️ Preferensi Tersimpan
+
+Your download folder, max retry, auto-paste, naming template, and cookies choice are saved automatically in your user config dir and reused as defaults next session:
+
+| OS | Config location |
+|----|-----------------|
+| 🪟 Windows | `%APPDATA%\lumenfetch\config.json` |
+| 🍎 macOS | `~/Library/Application Support/lumenfetch/config.json` |
+| 🐧 Linux | `~/.config/lumenfetch/config.json` |
+
+Detailed logs live in `lumenfetch.log` in the same folder (run with `-v/--verbose` for debug level).
+
+## 🌍 Display Language
+
+The CLI (menus, prompts, messages, and `--help` text) is available in **English** (default) and **Bahasa Indonesia**.
+
+```bash
+lumenfetch --ui-lang id              # Bahasa Indonesia, remembered for next sessions
+lumenfetch --ui-lang en              # back to English
+LUMENFETCH_LANG=id lumenfetch        # via environment variable (Windows: set LUMENFETCH_LANG=id)
+```
+
+Priority order: `--ui-lang` → `LUMENFETCH_LANG` env → `ui_lang` in user config → default `en`.
+
+## 📜 Playlist
+
+A playlist URL downloads **only the first video** by default (with a warning), so one URL never silently floods your folder. To grab the whole list as indexed files:
+
+```bash
+lumenfetch "https://youtube.com/playlist?list=PLxxxxxx" --playlist all -y
+```
+
+## 📦 Batch Download
+
+Put one URL per line in a text file (`#` = comment), then:
+
+```bash
+lumenfetch --batch daftar.txt --jobs 2
+```
+
+## 🍪 Cookies (Optional)
+
+Age-restricted or private videos need a login. If you hit such errors, enable one of these:
+
+**A. Browser cookies:**
+1. Open Lumenfetch, type `settings`
+2. Pick `[5] Pakai cookies dari browser/file`
+3. Pick the browser where you're logged into YouTube (Chrome/Firefox/Edge/Brave/Opera/Vivaldi/Safari)
+
+> **Important:** the chosen browser must be **fully closed** while downloading (its cookie file is locked while open - the error looks like `Could not copy ... cookie database`). Check Task Manager and kill all its processes (Edge/Chrome often keep running in the background).
+
+**B. Cookie file (most reliable, recommended if cookie errors persist):**
+1. Install the **"Get cookies.txt LOCALLY"** extension (Chrome/Edge/Firefox)
+2. Open youtube.com (make sure you're logged in), click the extension → **Export** → save e.g. `D:\cookies.txt`
+3. In Lumenfetch: `settings` → `[5]` → `[1] Nonaktifkan` → enter the cookie file path
+4. Or via CLI: `lumenfetch <URL> --cookies-file D:\cookies.txt`
+
+## 🤖 Non-Interactive Mode (Scripting/Automation)
+
+Besides the Q&A mode, Lumenfetch also runs via command line arguments, handy for scheduling (cron/Task Scheduler) or calling from other scripts.
+
+```bash
+lumenfetch "https://youtube.com/watch?v=..." -t video -f mp4 -q 720p -y
+```
+
+**Available arguments:**
+
+| Argument | Description |
+|---|---|
+| `url` | YouTube video/playlist URL. Filling this enables non-interactive mode when combined with other flags. |
+| `-t/--type {video,audio}` | Output type |
+| `-f/--format {mp4,mp3}` | Output format |
+| `-q/--quality` | Video quality (Best/1080p/720p/480p/360p/Worst) or MP3 bitrate (Best/320kbps/192kbps/128kbps) |
+| `-o/--output` | Custom output folder |
+| `--cookies` | Browser cookies (chrome/firefox/edge/brave/opera/vivaldi/safari/none) |
+| `--cookies-file` | Netscape-format cookie file |
+| `--max-retry` | Connection retry count |
+| `--playlist {single,all}` | Playlist mode |
+| `--subs` | Download subtitles when available |
+| `--sub-langs` | Subtitle languages, comma-separated (default: en,id) |
+| `--embed-subs` | Embed subtitles into the MP4 file |
+| `--embed-metadata` | Embed metadata (title/artist) into the output file |
+| `--batch` | Text file with URLs (one per line) |
+| `--jobs N` | Batch parallelism 1-4 (default 1) |
+| `--no-clipboard` | Don't offer clipboard content |
+| `--ui-lang {en,id}` | Display language (default `en`, remembered after being set) |
+| `-y/--yes` | Skip the filename confirmation |
+| `-v/--verbose` | Detailed logging to file + console |
+| `--history` | Show history and exit |
+| `--version` | Show the version |
+
+**More examples:**
+
+```bash
+# Audio only, best bitrate
+lumenfetch "https://youtube.com/watch?v=..." -t audio -q 320kbps -y
+
+# Whole playlist as MP4
+lumenfetch "https://youtube.com/playlist?list=PLxxx" --playlist all -y
+
+# With subtitles embedded
+lumenfetch "https://youtube.com/watch?v=..." -t video --subs --embed-subs -y
+
+# Batch of URLs, 2 at a time
+lumenfetch --batch daftar.txt --jobs 2
+
+# See all options
+lumenfetch --help
+```
+
+## 📂 Output Structure
+
+Filenames follow the template in settings (default: `%(platform)s_%(title)s_%(year)s`):
 
 ```
 YouTube_Lofi-Hip-Hop-Radio_2026.mp4
 YouTube_Lofi-Hip-Hop-Radio_2026.mp3
 ```
 
-Preferensi kamu (folder simpan, max retry, auto-paste, naming template, cookies browser, dan riwayat) otomatis tersimpan di config user
-(`%APPDATA%/lumenfetch/config.json` di Windows, `~/.config/lumenfetch/config.json` di Linux, `~/Library/Application Support/lumenfetch/` di macOS)
-- dibuat otomatis dengan nilai default saat pertama kali dijalankan. Config lama di `config.json` project root dimigrasi otomatis sekali.
-Log detail tersimpan di `lumenfetch.log` sefolder config (pakai `-v/--verbose` untuk level debug).
+## 🗺️ Default Folder per OS
 
-**Folder download default** otomatis mengikuti folder **Downloads** asli sistem operasi kamu (`~/Downloads` di macOS/Linux, `C:\Users\<nama-kamu>\Downloads` di Windows) - persis seperti kebiasaan browser lain (Chrome, Firefox, Edge, dll), bukan folder relatif di dalam project. Mau ganti ke folder lain? Tinggal:
+| OS | Default folder |
+|----|----------------|
+| 🪟 Windows | `C:\Users\<username>\Downloads` |
+| 🍎 macOS | `/Users/<username>/Downloads` |
+| 🐧 Linux | `/home/<username>/Downloads` |
 
-1. Ketik `settings` di prompt utama
-2. Pilih `[1] Ganti folder download default`
-3. Ketik path folder yang diinginkan (boleh pakai `~` buat home folder, mis. `~/Documents/Video`, atau path absolut penuh)
-
-> **Catatan:** config tersimpan di folder data user (lihat atas), bukan relatif ke folder project - jadi aman dijalankan dari mana saja.
+Change it anytime via the `settings` command (`[1]`), absolute paths and `~` are both accepted.
 
 ## ⚠️ Troubleshooting
 
-| Masalah | Solusi |
+| Problem | Solution |
 |---------|--------|
-| `ModuleNotFoundError: No module named 'yt_dlp'` / `'rich'` / `'curl_cffi'` / `'pyperclip'` / `'static_ffmpeg'` | Jalankan ulang `pip install -r requirements.txt` |
-| `HTTP Error 403: Forbidden` | Update yt-dlp ke versi terbaru: `pip install --upgrade yt-dlp` |
-| `Sign in to confirm you're not a bot` | Aktifkan fitur **Cookies** di atas (browser atau file) |
-| `❌ Konten ini private / tidak bisa diakses` | Video private/age-restricted - aktifkan **Cookies** di atas |
-| `❌ Format tidak tersedia untuk konten ini` | Coba quality lain |
-| `❌ Koneksi internet bermasalah` terus muncul | Cek koneksi, atau naikkan `max_retry` lewat command `settings` |
-| Video berhasil download tapi tidak ada suara | Jarang terjadi karena ffmpeg sudah bundled otomatis, tapi kalau muncul, jalankan ulang aplikasinya (ffmpeg diunduh ulang otomatis kalau file sebelumnya rusak) |
-| Ganti naming template di `settings` ditolak | Template cuma boleh pakai `%(platform)s`, `%(title)s`, `%(year)s` - ditolak otomatis kalau ada placeholder salah ketik, biar tidak bikin nama file error saat download |
-| `⚠️ URL ini playlist berisi N video` | Default cuma video pertama. Gunakan `--playlist all` untuk download semua sebagai file ber-index |
-| Batch download | Buat file teks (satu URL per baris, `#` = komentar), lalu `python main.py --batch daftar.txt --jobs 2` |
-| Resume download | Didukung via `continuedl` yt-dlp + retry backoff eksponensial (2s, 4s, 8s... max 30s). File parsial `.part` dilanjutkan, bukan diulang dari 0 |
-| `ffmpeg tidak ditemukan` | Install ffmpeg sistem dulu (lebih ringan), fallback bundled otomatis. Cek dengan `ffmpeg -version` |
+| `ModuleNotFoundError: No module named 'yt_dlp'` / `'rich'` / `'curl_cffi'` | Re-run `pip install lumenfetch` (or `pip install -r requirements.txt` from source) |
+| `HTTP Error 403: Forbidden` | Update yt-dlp: `pip install --upgrade yt-dlp` |
+| `Sign in to confirm you're not a bot` | Enable **Cookies** above (browser or file) |
+| `❌ Private / unavailable content` | Private/age-restricted video - enable **Cookies** above |
+| `❌ Format not available for this content` | Try another quality |
+| `❌ Connection trouble` keeps showing | Check your connection, or raise `max_retry` via `settings` |
+| Downloaded video has no sound | Rare since ffmpeg is bundled, but if it happens, restart the app (the bundle re-downloads automatically if corrupted) |
+| Naming template rejected in `settings` | Only `%(platform)s`, `%(title)s`, `%(year)s` are allowed - rejected automatically on typos so filenames never break |
+| `⚠️ Playlist with N videos` | Only the first video by default. Use `--playlist all` for all of them as indexed files |
+| `ffmpeg not found` | Install system ffmpeg first (lighter), bundled fallback is automatic. Check with `ffmpeg -version` |
 
-## 🗂️ Struktur Project
+## 📝 Important Notes
+
+- Only YouTube links are accepted (`youtube.com`, `youtu.be`, `music.youtube.com`) - other platforms are rejected with a clear message, not a crash
+- A `Sign in to confirm you're not a bot` message means YouTube is challenging automated requests: install/update `curl_cffi` + `yt-dlp`, then enable cookies
+- This tool is for downloading videos you have the right to save (your own uploads, Creative Commons, offline watching). Respect creators' copyright
+
+## 🛠️ Built With
+
+![Python](https://img.shields.io/badge/-Python-3776AB?style=flat-square&logo=python&logoColor=white)
+![yt-dlp](https://img.shields.io/badge/-yt--dlp-FF6B6B?style=flat-square)
+![Rich](https://img.shields.io/badge/-Rich-FAE742?style=flat-square)
+![curl-cffi](https://img.shields.io/badge/-curl--cffi-2B579A?style=flat-square)
+
+## 🗂️ Project Structure
 
 ```
 lumenfetch/
-├── main.py                    # Entry point, CLI args, batch, loop utama
+├── main.py                    # Entry point, CLI args, batch, main loop
 ├── core/
-│   ├── constants.py           # Single source of truth (versi, format, batas)
-│   ├── errors.py              # Taxonomy error terpusat (klasifikasi + pesan ramah)
-│   ├── ffmpeg.py              # Deteksi ffmpeg sistem dulu, bundled fallback
-│   ├── log.py                 # Logging file terpusat
-│   ├── downloader.py          # Download MP4 / ekstrak MP3 + resume + retry backoff
-│   ├── detector.py            # Deteksi info video YouTube
-│   ├── options.py             # Menu & prompt interaktif (rich)
-│   ├── update_checker.py      # Auto-check versi terbaru yt-dlp di PyPI
-│   └── utils.py               # Sanitasi nama file, format size, config user
+│   ├── constants.py           # Single source of truth (version, formats, limits)
+│   ├── errors.py              # Central error taxonomy (classification + friendly messages)
+│   ├── ffmpeg.py              # System ffmpeg first, bundled fallback
+│   ├── log.py                 # Central file logging
+│   ├── downloader.py          # MP4 download / MP3 extract + resume + retry backoff
+│   ├── detector.py            # YouTube video info detection
+│   ├── options.py             # Interactive menus & prompts (rich)
+│   ├── update_checker.py      # Auto-check for newer yt-dlp on PyPI
+│   └── utils.py               # Filename sanitizing, size formatting, user config
 ├── tests/
-│   ├── conftest.py            # Fixture global (no-sleep) + SAMPLE_VIDEO_FORMATS
+│   ├── conftest.py            # Global fixtures (no-sleep) + SAMPLE_VIDEO_FORMATS
 │   ├── test_utils.py
 │   ├── test_detector.py
 │   ├── test_downloader.py
 │   ├── test_options.py
 │   ├── test_main.py
-│   └── test_features.py       # Fitur (CLI, backoff, batch, ffmpeg, cookies, log)
+│   └── test_features.py       # Features (CLI, backoff, batch, ffmpeg, cookies, log)
 ├── .github/
 │   └── workflows/
-│       └── tests.yml          # CI: test & lint otomatis
-├── downloads/                 # Folder placeholder (bukan lokasi download aktual - lihat "Naming & Konfigurasi")
-├── requirements.txt
-├── requirements-dev.txt       # Dependency tambahan untuk development (pytest, ruff)
-├── pyproject.toml             # Metadata project + entry point + konfigurasi ruff
-├── CONTRIBUTING.md
+│       └── tests.yml          # CI: automatic test & lint
+├── requirements.txt           # Dependency list (for manual reference)
+├── pyproject.toml             # Package metadata + entry point + ruff config
+├── CONTRIBUTING.md            # Contribution guide
 ├── LICENSE
-└── README.md
+├── README.md                  # Main docs (English)
+└── README.id.md               # Docs (Bahasa Indonesia)
 ```
 
-**Prinsip pemisahan modul:**
-- `constants.py` - nilai shared (versi, format, batas) biar tidak drift antar modul
-- `errors.py` - klasifikasi error terpusat, dipakai detector & downloader bersama
-- `detector.py` - murni deteksi info video YouTube, tidak mendownload apa pun
-- `downloader.py` - murni proses download MP4/MP3 & progress, tidak menampilkan menu
-- `options.py` - semua interaksi & tampilan menu, tidak ada logic download
-- `utils.py` - helper murni (sanitasi, format, baca/tulis config), tidak tahu soal CLI atau jaringan
-- `main.py` - menyatukan semuanya lewat CLI + loop utama
-
-## 🗺️ Roadmap
-
-- [x] **Phase 1 - Core**: struktur project, integrasi yt-dlp dasar, progress bar, config user
-- [x] **Phase 2 - Smart Detection**: auto-detect video YouTube, auto-paste clipboard, preview nama file
-- [x] **Phase 3 - Reliability**: resume, retry backoff eksponensial, playlist, cancel graceful
-- [x] **Phase 4 - Polish**: menu history, settings, help, naming template, subtitle & metadata
-- [x] **Phase 5 - Fokus YouTube**: scope MP4/MP3 saja (v2.0.0) - hapus jalur multi-platform & dep berat
+**Module separation principles:**
+- `constants.py`, shared values (version, formats, limits) so modules never drift
+- `errors.py`, central error classification used by detector & downloader together
+- `detector.py`, purely detects YouTube video info, never downloads anything
+- `downloader.py`, purely MP4/MP3 processing & progress, never shows menus
+- `options.py`, all user interaction & menus, no download logic
+- `utils.py`, pure helpers (sanitizing, formatting, config read/write), knows nothing about CLI or network
+- `main.py`, ties everything together via CLI + main loop
 
 ## 🧪 Testing
 
-Ada unit test per modul (sanitasi nama file, naming template, resolve duplikat, format ukuran/durasi, config, validasi URL YouTube, opts yt-dlp, CLI, dll).
+Unit tests per module (filename sanitizing, naming templates, duplicate resolving, size/duration formatting, config, YouTube URL validation, yt-dlp opts, CLI, etc.).
 
 ```bash
-pip install -r requirements-dev.txt
+pip install -e .[dev]
 pytest tests/ -v
 ruff check .
 ```
 
-CI (`.github/workflows/tests.yml`) otomatis menjalankan ini di setiap push & pull request ke `main`, di Python 3.9-3.12.
+CI (`.github/workflows/tests.yml`) runs these automatically on every push & pull request to `main`.
 
-## 🤝 Kontribusi
+## 🤝 Contributing
 
-Mau bantu kembangin Lumenfetch? Baca [`CONTRIBUTING.md`](CONTRIBUTING.md) untuk struktur project dan alur kontribusi.
+Want to help develop Lumenfetch? Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for the project structure and contribution flow.
+
+## ❓ FAQ
+
+<details>
+<summary><b>Is this legal / safe to use?</b></summary>
+
+This tool uses the same requests your browser makes when you watch YouTube, so it doesn't hack anything. But use it responsibly: download for personal/offline use, and respect creators' copyright. Don't re-upload or sell other people's content.
+
+</details>
+
+<details>
+<summary><b>Do I need a YouTube account?</b></summary>
+
+No, not for public videos. You only need to be logged in (via cookies) for age-restricted or private videos you have access to.
+
+</details>
+
+<details>
+<summary><b>Private / deleted video, can it be downloaded?</b></summary>
+
+No. Only content that your account can actually watch can be downloaded.
+
+</details>
+
+<details>
+<summary><b>Why is the process slow?</b></summary>
+
+Download speed follows your connection. Connection errors are retried automatically with backoff, and interrupted downloads resume instead of restarting.
+
+</details>
+
+<details>
+<summary><b>Which quality should I pick?</b></summary>
+
+- Want the best available → **Best**
+- Want smaller files for phone storage → **720p** or **480p**
+- Audio only for music/podcasts → **MP3 320kbps**
+
+</details>
 
 ## 👤 Author
 
@@ -356,6 +468,6 @@ Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more informa
 
 Made with 📥 by **Nicolas Dwi Dharma**
 
-*Star ⭐ repo ini kalau project ini membantumu!*
+*Star ⭐ this repo if the project helps you!*
 
 </div>

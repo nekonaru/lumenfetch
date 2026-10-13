@@ -61,7 +61,7 @@ def test_ask_video_choice_shows_size_estimate_when_content_given():
 
     printed_text = " ".join(str(call.args[0]) for call in fake_print.call_args_list)
     assert "MB" in printed_text
-    assert "detik" in printed_text or "menit" in printed_text
+    assert "seconds" in printed_text or "minutes" in printed_text
 
 
 def test_ask_video_choice_without_content_still_works():
@@ -190,7 +190,7 @@ def test_ask_again_or_url_accepts_pasted_url():
 def test_show_history_table_empty(capsys):
     options.show_history_table([])
     out = capsys.readouterr().out
-    assert "riwayat" in out.lower()
+    assert "history" in out.lower()
 
 
 def test_ask_cookies_browser_values():

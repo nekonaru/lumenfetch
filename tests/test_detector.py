@@ -189,7 +189,7 @@ def test_detect_maps_tiktok_style_challenge_to_blocked(monkeypatch):
 
     with pytest.raises(DetectionError) as exc_info:
         detect("https://www.youtube.com/watch?v=abc")
-    assert "memblokir" in str(exc_info.value).lower()
+    assert "blocking" in str(exc_info.value).lower()
 
 
 def test_detect_retries_without_cookies_when_cookie_copy_fails(monkeypatch):

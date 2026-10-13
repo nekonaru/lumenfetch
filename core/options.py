@@ -1,7 +1,7 @@
 """
 options.py
 Semua prompt/menu interaktif (pilih output, quality, dll) memakai Rich.
-Tidak ada logic download di sini.
+Tidak ada logic download di sini. Bahasa mengikuti core.i18n (default English).
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ from core.constants import (
     VIDEO_QUALITIES,
 )
 from core.detector import DetectedContent
+from core.i18n import t
 from core.utils import estimate_audio_size_bytes, estimate_video_size_bytes, format_duration, format_eta, format_size
 
 console = Console()
@@ -59,25 +60,28 @@ def show_header(version: str = VERSION) -> None:
 def show_update_notice(installed_version: str, latest_version: str) -> None:
     console.print(
         Panel(
-            f"yt-dlp kamu versi [bold]{installed_version}[/bold], "
-            f"versi terbaru [bold green]{latest_version}[/bold green] sudah tersedia.\n"
-            "[dim]YouTube sering ubah sistemnya, jadi update disarankan biar tetap kompatibel:[/dim]\n"
-            "[bold cyan]pip install --upgrade yt-dlp[/bold cyan]",
-            title="🔔 Update yt-dlp tersedia",
+            t("update.body", installed=installed_version, latest=latest_version),
+            title=t("update.title"),
             border_style="yellow",
         )
     )
 
 
 def show_content_panel(content: DetectedContent) -> None:
-    count_text = f" ({len(content.entries)} video)" if content.entries else ""
+    if content.entries:
+        n = len(content.entries)
+        count_text = f" {t('panel.video_one', n=n) if n == 1 else t('panel.video_many', n=n)}"
+    else:
+        count_text = ""
+
     lines = [
-        f"[bold]Judul[/bold]     : {content.title}",
-        f"[bold]Tipe[/bold]      : {content.content_type}{count_text}",
+        f"[bold]{t('panel.title_label')}[/bold]     : {content.title}",
+        f"[bold]{t('panel.type_label')}[/bold]      : {content.content_type}{count_text}",
     ]
     if content.duration:
-        lines.append(f"[bold]Durasi[/bold]    : {format_duration(content.duration)}")
-    console.print(Panel("\n".join(lines), title="✅ Video Terdeteksi", border_style="green"))
+        lines.append(f"[bold]{t('panel.duration_label')}[/bold]    : {format_duration(content.duration)}")
+
+    console.print(Panel("\n".join(lines), title=t("panel.title"), border_style="green"))
 
 
 def _select_from_list(
@@ -106,9 +110,9 @@ def _select_from_list(
 
 
 def ask_output_type() -> str:
-    console.print("\nPilih tipe output:")
-    console.print("  [1] Video (MP4)")
-    console.print("  [2] Audio (MP3)")
+    console.print(t("out.prompt"))
+    console.print(f"  [1] {t('out.video')}")
+    console.print(f"  [2] {t('out.audio')}")
     raw = Prompt.ask("→", default="1")
     return "audio" if str(raw).strip() == "2" else "video"
 
@@ -138,7 +142,7 @@ def ask_video_choice(content: DetectedContent | None = None, avg_speed_bps: floa
         formats = content.raw_info.get("formats") or []
         extra = _build_size_labels(formats, VIDEO_QUALITIES, content.duration, avg_speed_bps, estimate_video_size_bytes)
 
-    quality = _select_from_list("Pilih Quality:", VIDEO_QUALITIES, default_index=0, extra=extra)
+    quality = _select_from_list(t("q.video"), VIDEO_QUALITIES, default_index=0, extra=extra)
     return DownloadChoice(output_kind="video", quality=quality, fmt=VIDEO_FORMAT)
 
 
@@ -148,35 +152,35 @@ def ask_audio_choice(content: DetectedContent | None = None, avg_speed_bps: floa
         formats = content.raw_info.get("formats") or []
         extra = _build_size_labels(formats, AUDIO_QUALITIES, content.duration, avg_speed_bps, estimate_audio_size_bytes)
 
-    quality = _select_from_list("Pilih Quality (bitrate MP3):", AUDIO_QUALITIES, default_index=0, extra=extra)
+    quality = _select_from_list(t("q.audio"), AUDIO_QUALITIES, default_index=0, extra=extra)
     return DownloadChoice(output_kind="audio", quality=quality, fmt=AUDIO_FORMAT)
 
 
 def ask_playlist_mode(total: int) -> str:
     """Tanya mode playlist: 1 video pertama (default) atau semua."""
-    console.print(f"\nURL ini playlist berisi {total} video:")
-    console.print("  [1] Download video pertama saja  (default)")
-    console.print(f"  [2] Download semua ({total} video)")
+    console.print(t("pl.prompt", total=total))
+    console.print(f"  [1] {t('pl.single')}")
+    console.print(f"  [2] {t('pl.all', total=total)}")
     raw = Prompt.ask("→", default="1")
     return "all" if str(raw).strip() == "2" else "single"
 
 
 def ask_subtitle_options() -> tuple[bool, list[str] | None, bool]:
     """Return (write_subs, sub_langs, embed_subs). Default mati."""
-    console.print("\nDownload subtitle?")
-    console.print("  [1] Tidak  (default)")
-    console.print("  [2] Ya, download file subtitle")
+    console.print(t("subs.prompt"))
+    console.print(f"  [1] {t('subs.no')}")
+    console.print(f"  [2] {t('subs.yes')}")
     raw = Prompt.ask("→", default="1")
     if str(raw).strip() != "2":
         return False, None, False
-    langs_raw = Prompt.ask("Bahasa subtitle (koma, mis. en,id)", default=",".join(SUBTITLE_LANGS_DEFAULT))
+    langs_raw = Prompt.ask(t("subs.langs"), default=",".join(SUBTITLE_LANGS_DEFAULT))
     langs = [p.strip().lower() for p in str(langs_raw).replace(",", " ").split() if p.strip()]
-    embed = Confirm.ask("Embed subtitle ke file MP4?", default=False)
+    embed = Confirm.ask(t("subs.embed"), default=False)
     return True, langs or list(SUBTITLE_LANGS_DEFAULT), bool(embed)
 
 
 def ask_embed_metadata() -> bool:
-    return Confirm.ask("Embed metadata (judul/artis) ke file hasil?", default=False)
+    return Confirm.ask(t("meta.prompt"), default=False)
 
 
 def resolve_choice(content: DetectedContent, avg_speed_bps: float | None = None) -> DownloadChoice:
@@ -190,8 +194,8 @@ def resolve_choice(content: DetectedContent, avg_speed_bps: float | None = None)
 
 
 def confirm_filename(filename: str) -> bool:
-    console.print(f"\n📄 Nama file: [bold]{filename}[/bold]")
-    return Confirm.ask("Lanjutkan?", default=True)
+    console.print(t("confirm.file", name=filename))
+    return Confirm.ask(t("confirm.go"), default=True)
 
 
 def ask_again_or_url() -> bool | str:
@@ -199,7 +203,7 @@ def ask_again_or_url() -> bool | str:
     from core.detector import is_valid_url  # noqa: PLC0415 - hindari circular import
 
     while True:
-        raw = Prompt.ask("\nDownload lagi? [y/n] [dim](atau paste URL langsung)[/dim]", default="y").strip()
+        raw = Prompt.ask(t("again.prompt"), default="y").strip()
         if is_valid_url(raw):
             return raw
         low = raw.lower()
@@ -207,21 +211,21 @@ def ask_again_or_url() -> bool | str:
             return True
         if low in ("n", "no", "q", "quit") or low.startswith("n"):
             return False
-        console.print("[red]Jawab y/n, atau paste URL langsung.[/red]")
+        console.print(t("again.invalid"))
 
 
 def ask_again() -> bool:
-    return Confirm.ask("\nDownload lagi?", default=True)
+    return Confirm.ask(t("again.ask"), default=True)
 
 
 def show_history_table(history: list[dict]) -> None:
     if not history:
-        console.print("[dim]Belum ada riwayat download.[/dim]")
+        console.print(t("hist.empty"))
         return
 
-    table = Table(title="Riwayat Download (20 terakhir)")
-    for col in ("No", "Tanggal", "Judul", "Format", "Ukuran", "Status"):
-        table.add_column(col)
+    table = Table(title=t("hist.title"))
+    for col in ("hist.col_no", "hist.col_date", "hist.col_title", "hist.col_format", "hist.col_size", "hist.col_status"):
+        table.add_column(t(col))
 
     for i, entry in enumerate(history, start=1):
         if not isinstance(entry, dict):
@@ -239,46 +243,28 @@ def show_history_table(history: list[dict]) -> None:
 
 
 def show_help() -> None:
-    console.print(
-        Panel(
-            "[bold]COMMAND TERSEDIA[/bold]\n"
-            "history   Lihat riwayat download\n"
-            "settings  Buka pengaturan\n"
-            "help      Tampilkan halaman ini\n"
-            "q/quit    Keluar dari aplikasi\n\n"
-            "[bold]CARA PAKAI[/bold]\n"
-            "1. Paste link video YouTube\n"
-            "2. Pilih output Video (MP4) / Audio (MP3)\n"
-            "3. Pilih quality\n"
-            "4. Tunggu download selesai\n\n"
-            "[bold]CANCEL DOWNLOAD[/bold]\n"
-            "Tekan Ctrl+C saat download berjalan",
-            title="📖 Lumenfetch Help",
-            border_style="blue",
-        )
-    )
+    console.print(Panel(t("help.text"), title=t("help.title"), border_style="blue"))
 
 
 def show_settings_menu(config: dict) -> str:
     cookies_status = config.get("cookies_browser") or config.get("cookies_file") or "none"
-    console.print("\n[bold]Settings[/bold]")
-    console.print(f"  [1] Ganti folder download default  [dim](saat ini: {config['download_folder']})[/dim]")
-    console.print(f"  [2] Ganti max retry  [dim](saat ini: {config['max_retry']})[/dim]")
-    console.print(f"  [3] Toggle auto-paste clipboard  [dim](saat ini: {'ON' if config['auto_paste'] else 'OFF'})[/dim]")
-    console.print(f"  [4] Ganti naming template  [dim](saat ini: {config['naming_template']})[/dim]")
-    console.print(f"  [5] Pakai cookies dari browser/file  [dim](saat ini: {cookies_status})[/dim]")
-    console.print("  [6] Reset ke default")
-    console.print("  [7] Kembali")
+    console.print(t("set.title"))
+    console.print(f"  [1] {t('set.folder')}  {t('set.current', v=config['download_folder'])}")
+    console.print(f"  [2] {t('set.retry')}  {t('set.current', v=config['max_retry'])}")
+    on_off = t("set.on") if config["auto_paste"] else t("set.off")
+    console.print(f"  [3] {t('set.autopaste')}  {t('set.current', v=on_off)}")
+    console.print(f"  [4] {t('set.template')}  {t('set.current', v=config['naming_template'])}")
+    console.print(f"  [5] {t('set.cookies')}  {t('set.current', v=cookies_status)}")
+    console.print(f"  [6] {t('set.reset')}")
+    console.print(f"  [7] {t('set.back')}")
     return Prompt.ask("→", default="7")
 
 
 def ask_cookies_browser() -> str | None:
     """Minta user pilih browser buat ambil cookies (konten age-restricted/private)."""
-    console.print(
-        "\n[dim]Dipakai buat video yang minta login / age-restricted.[/dim]\n"
-        "[dim]Pastikan kamu sudah login ke YouTube di browser pilihanmu.[/dim]"
-    )
-    labels = ["Nonaktifkan", "Chrome", "Firefox", "Edge", "Brave", "Opera", "Vivaldi", "Safari"]
+    console.print(t("cookie.info1"))
+    console.print(t("cookie.info2"))
+    labels = [t("cookie.disable"), "Chrome", "Firefox", "Edge", "Brave", "Opera", "Vivaldi", "Safari"]
     values: list[str | None] = [None, "chrome", "firefox", "edge", "brave", "opera", "vivaldi", "safari"]
     for i, label in enumerate(labels):
         console.print(f"  [{i + 1}] {label}")

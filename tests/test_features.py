@@ -182,7 +182,7 @@ def test_classify_cookie_copy_failure():
 
     err = Exception("Could not copy Chrome cookie database. See https://github.com/yt-dlp/yt-dlp/issues/7271 for more info")
     assert classify_error(err) == ERROR_KIND_COOKIES
-    assert "tutup browser" in friendly_message(ERROR_KIND_COOKIES).lower()
+    assert "close the browser" in friendly_message(ERROR_KIND_COOKIES).lower()
 
 
 def test_classify_dpapi_failure_as_cookies():
@@ -292,7 +292,7 @@ def test_detect_cookie_fallback_prepends_cookies_note(monkeypatch):
     with pytest.raises(DetectionError) as exc_info:
         detector.detect("https://youtube.com/watch?v=abc", cookies_browser="edge")
 
-    assert "tutup browser" in str(exc_info.value).lower()
+    assert "close the browser" in str(exc_info.value).lower()
     assert "private" in str(exc_info.value).lower()
 
 
@@ -303,6 +303,51 @@ def test_ffmpeg_prefers_system(monkeypatch):
     monkeypatch.setattr(ffmpeg, "_verify", lambda *a, **k: True)
     assert ffmpeg.is_available() is True
     assert ffmpeg.ensure() is True
+
+
+def test_i18n_default_english_and_switch(monkeypatch):
+    from core import i18n
+
+    assert i18n.get_lang() == "en"
+    assert i18n.t("confirm.go") == "Continue?"
+    i18n.set_lang("id")
+    assert i18n.get_lang() == "id"
+    assert i18n.t("confirm.go") == "Lanjutkan?"
+    assert i18n.set_lang("xx") == "en"  # invalid -> fallback
+    assert i18n.t("missing.key.xyz") == "missing.key.xyz"
+
+
+def test_i18n_resolve_priority(monkeypatch):
+    from core import i18n
+
+    monkeypatch.delenv("LUMENFETCH_LANG", raising=False)
+    assert i18n.resolve_lang(None, {}) == "en"
+    assert i18n.resolve_lang("id", {}) == "id"
+    assert i18n.resolve_lang(None, {"ui_lang": "id"}) == "id"
+    monkeypatch.setenv("LUMENFETCH_LANG", "id")
+    assert i18n.resolve_lang(None, {"ui_lang": "en"}) == "id"
+    assert i18n.resolve_lang("en", {"ui_lang": "id"}) == "en"
+
+
+def test_ui_indonesian_history_and_panel(capsys):
+    from core import i18n, options
+    from core.detector import DetectedContent
+
+    i18n.set_lang("id")
+    options.show_history_table([])
+    assert "riwayat" in capsys.readouterr().out.lower()
+
+    content = DetectedContent(url="https://youtube.com/watch?v=x", title="Judul", duration=65)
+    printed = []
+    with mock.patch.object(options.console, "print", lambda *a, **k: printed.append(a[0])):
+        options.show_content_panel(content)
+    text = str(printed[0].renderable)
+    assert printed[0].title == "✅ Video Terdeteksi"
+    assert "1:05" in text
+
+    from core.errors import friendly_message
+
+    assert "koneksi" in friendly_message("connection").lower()
 
 
 def test_ydl_logger_swallows_stderr(capsys, tmp_path, monkeypatch):

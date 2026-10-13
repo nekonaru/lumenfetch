@@ -29,6 +29,7 @@ from core.constants import (
 from core.detector import DetectionError, detect, is_valid_url
 from core.downloader import download
 from core.errors import DownloadCancelled, DownloadFailed
+from core.i18n import resolve_lang, set_lang, t
 
 console = Console()
 
@@ -90,13 +91,13 @@ def _ensure_ffmpeg() -> bool:
 
             static_ffmpeg = mod
         except ImportError:
-            console.print("[yellow]⚠️  ffmpeg tidak ditemukan (sistem maupun bundled).[/yellow]")
+            console.print(t("main.ffmpeg_missing"))
             return False
     try:
         static_ffmpeg.add_paths()
         return _ffmpeg.is_available() or True
     except Exception as e:  # noqa: BLE001
-        console.print(f"[yellow]⚠️  Gagal menyiapkan ffmpeg bundled: {e}[/yellow]")
+        console.print(t("main.ffmpeg_fail", e=e))
         return False
 
 
@@ -123,6 +124,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--no-clipboard", action="store_true")
     p.add_argument("--yes", "-y", action="store_true", help="Lewati konfirmasi nama file")
     p.add_argument("--verbose", "-v", action="store_true", help="Log detail ke file + console")
+    p.add_argument("--ui-lang", choices=["en", "id"], default=None, help="Display language / bahasa tampilan (default: en, remembered)")
     p.add_argument("--history", action="store_true", help="Tampilkan riwayat lalu keluar")
     p.add_argument("--version", action="store_true", help="Tampilkan versi lalu keluar")
     return p.parse_args(argv)
@@ -185,8 +187,8 @@ def try_clipboard_url(config: dict, last_prompted: str | None) -> tuple[str | No
     if clip == last_prompted:
         return None, last_prompted
 
-    console.print(f"\n📋 Clipboard terdeteksi: {clip}")
-    if Prompt.ask("Gunakan URL ini? [Y/n]", default="y").lower().startswith("y"):
+    console.print(t("clip.found", url=clip))
+    if Prompt.ask(t("clip.use"), default="y").lower().startswith("y"):
         return clip, clip
     return None, clip
 
@@ -211,13 +213,13 @@ def handle_settings(config: dict) -> dict:
 
 
 def _settings_change_folder(config: dict) -> None:
-    new_folder = Prompt.ask("Folder download baru", default=config["download_folder"])
+    new_folder = Prompt.ask(t("main.folder_prompt"), default=config["download_folder"])
     config["download_folder"] = str(Path(new_folder).expanduser())
     utils.save_config(config)
 
 
 def _settings_change_retry(config: dict) -> None:
-    raw = Prompt.ask("Max retry baru", default=str(config["max_retry"]))
+    raw = Prompt.ask(t("main.retry_prompt"), default=str(config["max_retry"]))
     if str(raw).strip().isdigit():
         config["max_retry"] = int(str(raw).strip())
         utils.save_config(config)
@@ -229,19 +231,19 @@ def _settings_toggle_autopaste(config: dict) -> None:
 
 
 def _settings_change_template(config: dict) -> None:
-    new_template = Prompt.ask("Naming template baru", default=config["naming_template"])
+    new_template = Prompt.ask(t("main.template_prompt"), default=config["naming_template"])
     if utils.is_valid_naming_template(new_template):
         config["naming_template"] = new_template
         utils.save_config(config)
     else:
-        console.print("[red]Template tidak valid - pastikan cuma pakai %(platform)s, %(title)s, dan %(year)s.[/red]")
+        console.print(t("main.bad_template"))
 
 
 def _settings_change_cookies(config: dict) -> None:
     config["cookies_browser"] = options.ask_cookies_browser()
     if not config["cookies_browser"]:
         raw = Prompt.ask(
-            "File cookies Netscape (opsional, kosongkan bila tidak pakai) [dim](export via extension 'Get cookies.txt LOCALLY')[/dim]",
+            t("main.cookiefile_prompt"),
             default=config.get("cookies_file") or "",
         ).strip()
         config["cookies_file"] = raw or None
@@ -254,18 +256,15 @@ def _settings_reset(config: dict) -> None:
     config.clear()
     config.update(utils.get_default_config())
     utils.save_config(config)
-    console.print("[green]Config direset ke default.[/green]")
+    console.print(t("main.reset_done"))
 
 
 def _warn_if_pure_playlist(content, playlist_mode: str = PLAYLIST_MODE_SINGLE) -> None:
     if content.entries and len(content.entries) > 1:
         if playlist_mode == PLAYLIST_MODE_ALL:
-            console.print(f"[cyan]ℹ️  Playlist terdeteksi: {len(content.entries)} video akan didownload semua.[/cyan]")
+            console.print(t("main.warn_all", n=len(content.entries)))
             return
-        console.print(
-            f"[yellow]⚠️  URL ini playlist berisi {len(content.entries)} video - "
-            "cuma video pertama yang didownload. (Gunakan --playlist all untuk semua.)[/yellow]"
-        )
+        console.print(t("main.warn_single", n=len(content.entries)))
 
 
 def _save_history_threadsafe(config: dict, entry: dict) -> None:
@@ -284,7 +283,7 @@ def process_url(
     from core.log import get_logger  # noqa: PLC0415
 
     log = get_logger()
-    console.print("\n🔍 Mendeteksi konten...")
+    console.print(t("main.detecting"))
     try:
         content = detect(url, cookies_browser=config.get("cookies_browser"), cookies_file=config.get("cookies_file"))
     except DetectionError as e:
@@ -341,29 +340,29 @@ def process_url(
             }
         )
         if not entry["success"]:
-            console.print("[red]❌ Terjadi kesalahan saat download - file hasil tidak ditemukan[/red]")
+            console.print(t("main.not_found"))
         elif result.file_count > 1:
             console.print(
-                f"\n✅ Selesai!\n"
-                f"   File  : {result.file_count} video tersimpan di {output_folder}\n"
-                f"   Ukuran total: {utils.format_size(result.size_bytes)}\n"
-                f"   Waktu : {result.elapsed_seconds:.0f} detik"
+                t("main.done")
+                + f"\n   File  : {result.file_count} {t('main.files_in')} {output_folder}\n"
+                f"   {t('main.total_size')}: {utils.format_size(result.size_bytes)}\n"
+                f"   {t('main.time')} : {result.elapsed_seconds:.0f} {t('main.seconds')}"
             )
         else:
             console.print(
-                f"\n✅ Selesai!\n"
-                f"   File  : {result.filepath}\n"
-                f"   Ukuran: {utils.format_size(result.size_bytes)}\n"
-                f"   Waktu : {result.elapsed_seconds:.0f} detik"
+                t("main.done")
+                + f"\n   File  : {result.filepath}\n"
+                f"   {t('main.size')}: {utils.format_size(result.size_bytes)}\n"
+                f"   {t('main.time')} : {result.elapsed_seconds:.0f} {t('main.seconds')}"
             )
     except DownloadCancelled:
-        console.print("[yellow]❌ Download dibatalkan oleh user[/yellow]")
+        console.print(t("main.cancelled"))
         log.info("download dibatalkan %s", url)
     except DownloadFailed as e:
         console.print(f"[red]{e}[/red]")
         log.warning("download gagal %s: %s", url, e)
     except Exception as e:  # noqa: BLE001
-        console.print(f"[red]❌ Gagal download: {e}[/red]")
+        console.print(t("main.failed", e=e))
         log.exception("download error %s", url)
     finally:
         _save_history_threadsafe(config, entry)
@@ -445,6 +444,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     config = utils.load_config()
+    # Bahasa tampilan: --ui-lang > env LUMENFETCH_LANG > config > default en.
+    # Pilihan eksplisit via CLI diingat untuk sesi berikutnya.
+    if args.ui_lang:
+        config["ui_lang"] = args.ui_lang
+        utils.save_config(config)
+    set_lang(resolve_lang(args.ui_lang, config))
     if args.output:
         config["download_folder"] = str(Path(args.output).expanduser())
     if args.cookies is not None:
@@ -464,14 +469,14 @@ def main(argv: list[str] | None = None) -> int:
         try:
             urls = read_batch_file(args.batch)
         except OSError as e:
-            console.print(f"[red]Gagal baca batch file: {e}[/red]")
+            console.print(t("main.batch_read_fail", e=e))
             return 1
         if not urls:
-            console.print("[yellow]Batch file kosong.[/yellow]")
+            console.print(t("main.batch_empty"))
             return 1
         options.show_header(VERSION)
         summary = process_batch(urls, config, args)
-        console.print(f"\nBatch selesai: {summary['success']}/{summary['total']} sukses.")
+        console.print(t("main.batch_done", ok=summary["success"], total=summary["total"]))
         return 0 if summary["failed"] == 0 else 1
 
     if args.url:
@@ -508,10 +513,10 @@ def main(argv: list[str] | None = None) -> int:
     while True:
         clip_url, last_clip_prompted = try_clipboard_url(config, last_clip_prompted)
 
-        raw = clip_url or Prompt.ask("\nMasukkan URL YouTube [dim](q: keluar, history, settings, help)[/dim]").strip()
+        raw = clip_url or Prompt.ask(t("main.url_prompt")).strip()
 
         if raw.lower() in ("q", "quit"):
-            console.print("\n👋 Sampai jumpa!")
+            console.print(t("main.bye"))
             break
         if raw.lower() == "history":
             options.show_history_table(config.get("history", []))
@@ -528,17 +533,17 @@ def main(argv: list[str] | None = None) -> int:
         try:
             process_url(raw, config)
         except Exception as e:  # noqa: BLE001
-            console.print(f"[red]❌ Terjadi kesalahan tak terduga: {e}[/red]")
+            console.print(t("main.unexpected", e=e))
 
         nxt = options.ask_again_or_url()
         if isinstance(nxt, str):
             try:
                 process_url(nxt, config)
             except Exception as e:  # noqa: BLE001
-                console.print(f"[red]❌ Terjadi kesalahan tak terduga: {e}[/red]")
+                console.print(t("main.unexpected", e=e))
             continue
         if not nxt:
-            console.print("\n👋 Sampai jumpa!")
+            console.print(t("main.bye"))
             break
     return 0
 
@@ -550,7 +555,7 @@ def cli() -> None:
     try:
         raise SystemExit(main(_sys.argv[1:]))
     except KeyboardInterrupt:
-        console.print("\n\n👋 Dipaksa keluar. Sampai jumpa!")
+        console.print(t("main.kicked"))
 
 
 if __name__ == "__main__":

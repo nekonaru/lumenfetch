@@ -9,6 +9,7 @@ bersama, dengan pesan ramah yang konsisten.
 from __future__ import annotations
 
 from core.constants import CONNECTION_ERROR_HINTS
+from core.i18n import t
 
 
 class DetectionError(Exception):
@@ -35,23 +36,17 @@ ERROR_KIND_BLOCKED = "blocked"
 ERROR_KIND_COOKIES = "cookies"
 ERROR_KIND_UNKNOWN = "unknown"
 
-_FRIENDLY_MESSAGES = {
-    ERROR_KIND_CONNECTION: "❌ Koneksi internet bermasalah, coba lagi",
-    ERROR_KIND_PRIVATE: "❌ Konten ini private / tidak bisa diakses - coba aktifkan Cookies dari Browser di settings",
-    ERROR_KIND_FORMAT: "❌ Format tidak tersedia untuk konten ini",
-    ERROR_KIND_DISK: "❌ Tidak cukup ruang disk",
-    ERROR_KIND_RATE_LIMIT: "❌ Terlalu banyak request ke platform ini - tunggu sebentar lalu coba lagi",
-    ERROR_KIND_REMOVED: "❌ Konten ini sudah dihapus / tidak lagi tersedia",
-    ERROR_KIND_UNSUPPORTED: "❌ URL tidak valid atau tidak didukung",
-    ERROR_KIND_BLOCKED: (
-        "❌ Platform memblokir request otomatis (bot-check) - update yt-dlp "
-        "(pip install --upgrade yt-dlp) lalu aktifkan Cookies dari Browser di settings"
-    ),
-    ERROR_KIND_COOKIES: (
-        "❌ Gagal membaca cookies dari browser - tutup browser-nya sampai "
-        "benar-benar tertutup (cek Task Manager), lalu coba lagi"
-    ),
-    ERROR_KIND_UNKNOWN: "❌ Terjadi kesalahan saat download",
+_KIND_TO_KEY = {
+    ERROR_KIND_CONNECTION: "err.connection",
+    ERROR_KIND_PRIVATE: "err.private",
+    ERROR_KIND_FORMAT: "err.format",
+    ERROR_KIND_DISK: "err.disk",
+    ERROR_KIND_RATE_LIMIT: "err.rate_limit",
+    ERROR_KIND_REMOVED: "err.removed",
+    ERROR_KIND_UNSUPPORTED: "err.unsupported",
+    ERROR_KIND_BLOCKED: "err.blocked",
+    ERROR_KIND_COOKIES: "err.cookies",
+    ERROR_KIND_UNKNOWN: "err.unknown",
 }
 
 
@@ -95,24 +90,25 @@ def _curl_cffi_available() -> bool:
 
 def blocked_message() -> str:
     """Pesan blocked yang adaptif: sebut curl_cffi hanya bila belum terinstall."""
-    base = _FRIENDLY_MESSAGES[ERROR_KIND_BLOCKED]
+    base = t("err.blocked")
     if not _curl_cffi_available():
-        base += " + install paket 'curl_cffi' (pip install curl_cffi)"
+        base += t("err.blocked_curl")
     return base
 
 
 def friendly_message(kind: str) -> str:
-    """Pesan ramah untuk kind hasil classify_error()."""
+    """Pesan ramah untuk kind hasil classify_error() (mengikuti bahasa aktif)."""
     if kind == ERROR_KIND_BLOCKED:
         return blocked_message()
-    return _FRIENDLY_MESSAGES.get(kind, _FRIENDLY_MESSAGES[ERROR_KIND_UNKNOWN])
+    key = _KIND_TO_KEY.get(kind, "err.unknown")
+    return t(key)
 
 
 def detection_message(exc: Exception) -> str:
     """Pesan deteksi: sama dengan friendly, tapi unknown -> URL YouTube tidak valid."""
     kind = classify_error(exc)
     if kind == ERROR_KIND_FORMAT:
-        return "Konten ini tidak berisi video yang bisa didownload"
+        return t("err.no_video")
     if kind == ERROR_KIND_UNKNOWN:
-        return "URL bukan link YouTube yang valid atau tidak didukung"
+        return t("err.unknown_detect")
     return friendly_message(kind).lstrip("❌ ").strip()

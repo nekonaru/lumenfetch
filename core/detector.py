@@ -14,6 +14,7 @@ import yt_dlp
 
 from core.constants import YOUTUBE_HOSTS
 from core.errors import DetectionError, classify_error, detection_message
+from core.i18n import t
 from core.log import get_ydl_logger
 
 __all__ = [
@@ -119,7 +120,7 @@ def detect(url: str, cookies_browser: str | None = None, cookies_file: str | Non
     from core.utils import apply_cookie_opts  # noqa: PLC0415 - hindari circular import
 
     if not is_valid_url(url):
-        raise DetectionError("URL bukan link YouTube yang valid")
+        raise DetectionError(t("err.not_youtube_url"))
 
     url = strip_playlist_context(url)
 
@@ -144,14 +145,14 @@ def detect(url: str, cookies_browser: str | None = None, cookies_file: str | Non
             except yt_dlp.utils.DownloadError as e2:
                 raise DetectionError(_with_cookies_note(detection_message(e2))) from e2
             except Exception as e2:  # noqa: BLE001
-                raise DetectionError("URL bukan link YouTube yang valid") from e2
+                raise DetectionError(t("err.not_youtube_url")) from e2
         else:
             raise DetectionError(detection_message(e)) from e
     except Exception as e:  # noqa: BLE001
-        raise DetectionError("URL bukan link YouTube yang valid") from e
+        raise DetectionError(t("err.not_youtube_url")) from e
 
     if info is None:
-        raise DetectionError("URL bukan link YouTube yang valid")
+        raise DetectionError(t("err.not_youtube_url"))
 
     raw_entries = info.get("entries") or []
     entries = raw_entries if isinstance(raw_entries, list) else list(raw_entries)
