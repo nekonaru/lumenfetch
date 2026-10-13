@@ -13,7 +13,6 @@ from __future__ import annotations
 import copy
 import json
 import re
-import subprocess
 from datetime import datetime
 from pathlib import Path
 
@@ -46,7 +45,8 @@ __all__ = [
     "find_indexed_files",
     "resolve_duplicate",
     "build_cookies_from_browser",
-    "convert_image",
+    "resolve_cookie_file",
+    "apply_cookie_opts",
     "format_size",
     "format_duration",
     "estimate_video_size_bytes",
@@ -118,6 +118,7 @@ DEFAULT_CONFIG = {
     "naming_template": "%(platform)s_%(title)s_%(year)s",
     "max_retry": 3,
     "cookies_browser": None,
+    "cookies_file": None,
     "history": [],
 }
 
@@ -160,6 +161,13 @@ def _coerce_config(data: dict) -> dict:
         merged["cookies_browser"] = None
     if not isinstance(merged.get("download_folder"), str) or not merged["download_folder"].strip():
         merged["download_folder"] = get_default_download_folder()
+    # cookies_file: path ke file cookies Netscape (opsional). Normalisasi "" -> None.
+    cf = merged.get("cookies_file")
+    if isinstance(cf, str):
+        cf = cf.strip()
+        merged["cookies_file"] = cf or None
+    else:
+        merged["cookies_file"] = None
     return merged
 
 
@@ -411,58 +419,31 @@ def build_cookies_from_browser(browser: str | None):
     return (normalized, None, None, None)
 
 
-def convert_image(src: Path, target_ext: str) -> Path:
+def resolve_cookie_file(path: str | None) -> str | None:
+    """Validasi path file cookies (format Netscape). Return path absolut atau None."""
+    if not path:
+        return None
+    p = Path(str(path)).expanduser()
+    if p.is_file():
+        return str(p)
+    return None
+
+
+def apply_cookie_opts(ydl_opts: dict, cookies_browser: str | None, cookies_file: str | None = None) -> bool:
+    """Terapkan opsi cookies ke ydl_opts. Return True bila ada cookies yang dipakai.
+
+    Urutan: file cookies dulu (paling reliable, works walau browser terbuka),
+    lalu cookies browser.
     """
-    Convert gambar ke format lain (jpg/png/webp) pakai ffmpeg yang sudah
-    di-bundle otomatis (static_ffmpeg, lihat main.py). Dipakai bersama oleh
-    downloader.py (gambar dari yt-dlp: thumbnail YouTube, galeri Pinterest/
-    Reddit/X, dll) dan instagram_fallback.py (foto Instagram), supaya
-    pilihan format PNG/WEBP di menu beneran dikonversi di SEMUA jalur
-    download gambar, bukan cuma satu platform tertentu.
-
-    Kalau target sudah sama dengan ekstensi asli, atau ffmpeg gagal/tidak
-    ketemu, file ASLI dikembalikan apa adanya - gagal konversi TIDAK BOLEH
-    bikin seluruh download dianggap gagal (gambarnya sendiri tetap
-    tersimpan utuh, cuma formatnya beda dari yang diminta).
-    """
-    from core.constants import FFMPEG_TIMEOUT_SECONDS
-
-    target_ext = target_ext.lower().lstrip(".")
-    current_ext = src.suffix.lower().lstrip(".")
-
-    # jpg dan jpeg dianggap format yang sama
-    if {target_ext, current_ext} <= {"jpg", "jpeg"}:
-        return src
-    if target_ext == current_ext:
-        return src
-
-    dest = src.with_suffix(f".{target_ext}")
-    if dest.exists():
-        # Hindari overwrite file orang lain; cari nama unik.
-        dest = resolve_duplicate(dest)
-    try:
-        from core.ffmpeg import exe as _ffmpeg_exe  # noqa: PLC0415 - hindari circular import
-
-        subprocess.run(
-            [_ffmpeg_exe(), "-y", "-i", str(src), str(dest)],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=FFMPEG_TIMEOUT_SECONDS,
-        )
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError, subprocess.TimeoutExpired):
-        # Bersihkan file parsial hasil convert yang gagal, lalu fallback ke asli.
-        try:
-            dest.unlink(missing_ok=True)
-        except OSError:
-            pass
-        return src
-
-    try:
-        src.unlink(missing_ok=True)
-    except OSError:
-        pass
-    return dest
+    cookie_file = resolve_cookie_file(cookies_file)
+    if cookie_file:
+        ydl_opts["cookiefile"] = cookie_file
+        return True
+    cookies = build_cookies_from_browser(cookies_browser)
+    if cookies:
+        ydl_opts["cookiesfrombrowser"] = cookies
+        return True
+    return False
 
 
 def format_size(num_bytes: float | None) -> str:

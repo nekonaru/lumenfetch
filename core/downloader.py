@@ -1,7 +1,7 @@
 """
 downloader.py
-Logic download memakai yt-dlp (Python API, bukan subprocess),
-dengan progress hook Rich dan retry otomatis untuk error koneksi.
+Download video YouTube (MP4) / ekstrak audio (MP3) memakai yt-dlp,
+dengan progress hook Rich, resume otomatis, dan retry backoff eksponensial.
 """
 
 from __future__ import annotations
@@ -39,14 +39,12 @@ from core.errors import (
 from core.options import DownloadChoice
 from core.utils import (
     _iter_dir_files,
-    build_cookies_from_browser,
+    apply_cookie_opts,
     build_filename,
-    convert_image,
     find_indexed_files,
     resolve_duplicate,
 )
 
-# Re-export agar import lama tetap jalan.
 __all__ = [
     "DownloadCancelled",
     "DownloadFailed",
@@ -59,7 +57,6 @@ __all__ = [
 
 console = Console()
 
-# Backward-compat: dulu definisi lokal, sekarang kanonis di constants.
 CONNECTION_ERROR_HINTS = tuple(__import__("core.constants", fromlist=["CONNECTION_ERROR_HINTS"]).CONNECTION_ERROR_HINTS)
 
 _HEIGHT_FILTERS = {
@@ -79,15 +76,13 @@ class DownloadResult:
     filepath: Path
     size_bytes: int
     elapsed_seconds: float
-    file_count: int = 1  # >1 kalau multi-item (galeri/carousel via yt-dlp, bukan Instagram)
+    file_count: int = 1  # >1 kalau --playlist all
 
 
-def _quality_to_format_selector(quality: str, ext: str) -> str:
+def _quality_to_format_selector(quality: str, ext: str = "mp4") -> str:
     """
-    Selector video. Diprioritaskan cari kombinasi video+audio yang codec-nya
-    sudah kompatibel dengan container tujuan (mis. mp4 = h264+aac), biar
-    ffmpeg tinggal remux (gabung) tanpa perlu re-encode ulang. Ini juga
-    yang bikin proses gabung audio+video jauh lebih stabil.
+    Selector video: prioritaskan kombinasi video+audio yang codec-nya sudah
+    kompatibel dengan MP4 (h264+aac) biar ffmpeg tinggal remux tanpa re-encode.
     """
     hf = _HEIGHT_FILTERS.get(quality, "")
 
@@ -133,11 +128,7 @@ def _friendly_message(kind: str) -> str:
 
 
 def backoff_delay(attempt: int) -> float:
-    """Delay eksponensial untuk retry ke-`attempt` (1-indexed), dibatasi max + jitter.
-
-    attempt=1 -> ~2s, 2 -> ~4s, 3 -> ~8s, ... capped di RETRY_MAX_DELAY_SECONDS.
-    Jitter acak 0..RETRY_JITTER_SECONDS biar retry paralel tidak sinkron.
-    """
+    """Delay eksponensial untuk retry ke-`attempt` (1-indexed), dibatasi max + jitter."""
     import random
 
     base = RETRY_BASE_DELAY_SECONDS * (2.0 ** max(0, attempt - 1))
@@ -152,54 +143,29 @@ def download(
     naming_template: str,
     max_retry: int = 3,
     cookies_browser: str | None = None,
+    cookies_file: str | None = None,
 ) -> DownloadResult:
-    """Download konten sesuai pilihan user, dengan retry otomatis untuk error koneksi."""
+    """Download video/audio YouTube sesuai pilihan, retry backoff untuk error koneksi."""
     output_folder.mkdir(parents=True, exist_ok=True)
 
     ext = choice.fmt
     filename = build_filename(content.platform, content.title, ext, naming_template)
 
     entries_count = len(getattr(content, "entries", None) or [])
-    playlist_all = getattr(choice, "playlist_mode", "single") == PLAYLIST_MODE_ALL
+    playlist_all = getattr(choice, "playlist_mode", "single") == PLAYLIST_MODE_ALL and entries_count > 1
+    # "noplaylist" tidak berefek untuk URL playlist murni (yt-dlp #5215):
+    # paksa entry pertama bila mode single.
+    force_single_item = not playlist_all and entries_count > 1
 
-    # Konten gambar multi-item (carousel/galeri yang terdeteksi via yt-dlp,
-    # BUKAN instaloader - itu punya jalur download sendiri) butuh perlakuan
-    # khusus: noplaylist harus dimatikan supaya semua/entry terpilih ikut
-    # kedownload, outtmpl butuh index unik biar antar-entry tidak saling
-    # timpa, dan selected_indices (dari "pilih nomor tertentu") perlu benar-
-    # benar dipakai lewat playlist_items - sebelumnya diabaikan begitu saja.
-    # PENTING: harus dihitung SEBELUM resolve_duplicate() dipanggil, karena
-    # deteksi duplikat untuk multi-item butuh pola pencarian yang beda
-    # (lihat docstring resolve_duplicate).
-    is_multi_item = choice.output_kind == "image" and not choice.is_video_thumbnail and entries_count > 1
-
-    # Playlist murni (VIDEO/AUDIO dengan entries > 1): default tetap single
-    # (backward compat), tapi --playlist all memaksa semua entry dengan
-    # outtmpl ber-index agar tidak saling timpa.
-    is_playlist_all = playlist_all and not is_multi_item and entries_count > 1
-
-    # Kasus SEBALIKNYA: content_type VIDEO/AUDIO tapi entries > 1 berarti
-    # URL-nya sebenarnya playlist MURNI (tanpa parameter "v="), bukan galeri
-    # gambar. "noplaylist" TIDAK berefek buat URL semacam ini - dikonfirmasi
-    # langsung oleh maintainer yt-dlp sendiri (issue #5215, di-close sebagai
-    # "expected behavior"): noplaylist cuma mencegah playlist ke-download
-    # kalau URL-nya nunjuk video SPESIFIK di dalam playlist (ada "v="), sama
-    # sekali gak berefek buat URL playlist murni. Tanpa penanganan ini,
-    # seluruh playlist bakal kedownload dan semua entry saling menimpa nama
-    # file yang sama (app ini didesain satu konten per URL, bukan playlist
-    # manager) - playlist_items="1" memaksa cuma entry pertama yang diambil,
-    # apa pun isi "noplaylist"-nya.
-    force_single_item = not is_multi_item and not is_playlist_all and entries_count > 1
-
-    dest = resolve_duplicate(output_folder / filename, multi_item=(is_multi_item or is_playlist_all))
+    dest = resolve_duplicate(output_folder / filename, multi_item=playlist_all)
 
     ydl_opts = _build_ydl_opts(
         choice,
         dest,
         cookies_browser,
-        multi_item=is_multi_item,
+        cookies_file,
         force_single_item=force_single_item,
-        playlist_all=is_playlist_all,
+        playlist_all=playlist_all,
     )
 
     attempt = 0
@@ -225,6 +191,13 @@ def download(
                 raise DownloadCancelled("Download dibatalkan oleh user") from None
             except yt_dlp.utils.DownloadError as e:
                 kind = _classify_error(e)
+                if kind == "cookies" and ("cookiesfrombrowser" in ydl_opts or "cookiefile" in ydl_opts):
+                    ydl_opts.pop("cookiesfrombrowser", None)
+                    ydl_opts.pop("cookiefile", None)
+                    console.print(
+                        "[yellow]⚠️  Cookies browser gagal dibaca (tutup browser-nya) - lanjut tanpa cookies...[/yellow]"
+                    )
+                    continue
                 if kind == "connection" and attempt < max_retry:
                     attempt += 1
                     delay = backoff_delay(attempt)
@@ -236,66 +209,30 @@ def download(
                 raise DownloadFailed(_friendly_message(_classify_error(e))) from e
 
     elapsed = time.time() - start_time
-
-    multi_result = is_multi_item or is_playlist_all
-    if choice.output_kind == "image":
-        # Bug: menu ask_image_choice() menawarkan JPG/PNG/WEBP untuk SEMUA
-        # sumber gambar (thumbnail YouTube, galeri Pinterest/Reddit/X, dll),
-        # tapi yt-dlp sendiri cuma nyimpen file dalam format asli sumbernya
-        # (biasanya JPG) - pilihan PNG/WEBP diam-diam diabaikan kalau tidak
-        # dikonversi manual di sini. convert_image() sama persis dengan yang
-        # dipakai instagram_fallback.py, jadi konsisten di semua jalur gambar.
-        result_files = _find_result_files(dest, multi_item=is_multi_item)
-        converted_files = [convert_image(f, choice.fmt) for f in result_files]
-        if not converted_files:
-            final_path, total_size, file_count = dest, 0, 0
-        else:
-            final_path = converted_files[0]
-            total_size = sum(f.stat().st_size for f in converted_files if f.exists())
-            file_count = len(converted_files)
-    else:
-        final_path, total_size, file_count = _resolve_final_path(dest, multi_item=multi_result)
+    final_path, total_size, file_count = _resolve_final_path(dest, multi_item=playlist_all)
 
     return DownloadResult(filepath=final_path, size_bytes=total_size, elapsed_seconds=elapsed, file_count=file_count)
 
 
 def _find_result_files(dest: Path, multi_item: bool = False) -> list[Path]:
-    """
-    Cari semua file hasil download yang cocok dengan `dest` (urut). Dipakai
-    bareng oleh _resolve_final_path() (buat non-gambar) dan download() (buat
-    gambar, sebelum tahap konversi format) - satu sumber logic pencarian
-    file, biar tidak ada dua implementasi glob yang bisa saling berbeda
-    perilaku (itu yang pernah bikin _resolve_final_path() ketinggalan waktu
-    outtmpl multi-item pertama kali ditambahkan).
-    """
+    """Cari file hasil download yang cocok dengan `dest` (aman dari karakter glob di judul)."""
     if multi_item:
         return find_indexed_files(dest)
 
     if dest.exists():
         return [dest]
 
-    # FIX glob-injection: stem bisa mengandung `[`, `*`, `?` dari judul
-    # asli. Jangan pakai `glob(f"{stem}.*")` mentah - iterdir + filter manual.
     image_exts = {".jpg", ".jpeg", ".png", ".webp"}
     stem = dest.stem
     matches: list[Path] = []
     non_image_matches: list[Path] = []
     for p in _iter_dir_files(dest.parent):
-        if not p.is_file():
-            continue
-        if p.stem != stem and not p.name.startswith(stem + "."):
-            continue
-        # Pola "{stem}.*": nama harus persis stem + satu ekstensi.
-        if p.stem != stem:
+        if not p.is_file() or p.stem != stem:
             continue
         matches.append(p)
         if p.suffix.lower() not in image_exts:
             non_image_matches.append(p)
 
-    # Thumbnail sisa (.jpg/.png/.webp) sengaja diprioritaskan PALING TERAKHIR,
-    # karena urutan glob() tidak dijamin dan kalau kebetulan thumbnail-nya yang
-    # kepilih duluan, path & ukuran yang dilaporkan ke user jadi salah (nunjuk
-    # ke gambar, bukan video/audio hasil download).
     if non_image_matches:
         return [sorted(non_image_matches, key=lambda p: p.name)[0]]
     if matches:
@@ -304,22 +241,7 @@ def _find_result_files(dest: Path, multi_item: bool = False) -> list[Path]:
 
 
 def _resolve_final_path(dest: Path, multi_item: bool = False) -> tuple[Path, int, int]:
-    """
-    Return (path_representatif, total_size_bytes, jumlah_file).
-
-    yt-dlp kadang ganti ekstensi (mis. setelah postprocessing), dan untuk
-    multi_item outtmpl-nya punya suffix index (lihat _build_ydl_opts), jadi
-    TIDAK PERNAH ada file persis di `dest` - harus dicari lewat
-    find_indexed_files(), bukan glob polos "{stem}.*". Kalau ini kepakai
-    pola yang salah, aplikasi bakal lapor "sukses" tapi filepath-nya gak
-    exist dan size 0, padahal file-nya beneran ada.
-
-    Untuk multi_item, sengaja pakai find_indexed_files() (regex-anchored ke
-    "-<angka>." di akhir nama) dan BUKAN glob "{stem}-*.*" polos, biar gak
-    salah ikut nyomot file dari konten LAIN yang judulnya kebetulan numpuk
-    sebagai prefix (mis. stem "Sunset" gak boleh kebawa "Sunset-Beach-1.jpg"
-    milik konten "Sunset-Beach" yang beda).
-    """
+    """Return (path_representatif, total_size_bytes, jumlah_file)."""
     matches = _find_result_files(dest, multi_item=multi_item)
     if not matches:
         return dest, 0, 0
@@ -331,16 +253,11 @@ def _build_ydl_opts(
     choice: DownloadChoice,
     dest: Path,
     cookies_browser: str | None = None,
-    multi_item: bool = False,
+    cookies_file: str | None = None,
     force_single_item: bool = False,
     playlist_all: bool = False,
 ) -> dict:
-    indexed = multi_item or playlist_all
-    if indexed:
-        # Sisipkan index unik di nama file, biar tiap entry carousel/galeri/
-        # playlist tidak saling timpa satu sama lain (sebelumnya SEMUA entry
-        # ditulis ke nama file yang sama persis, jadi cuma entry terakhir
-        # yang tersisa).
+    if playlist_all:
         outtmpl = f"{dest.with_suffix('')}-%(playlist_index,autonumber)d"
     else:
         outtmpl = str(dest.with_suffix(""))  # ekstensi diserahkan ke yt-dlp/postprocessor
@@ -351,42 +268,21 @@ def _build_ydl_opts(
         "no_warnings": True,
         "noprogress": True,
         "retries": 0,  # retry koneksi ditangani manual (backoff) di download()
-        "fragment_retries": 3,  # retry per-fragmen HLS/DASH tetap milik yt-dlp
-        "continuedl": True,  # resume file parsial (.part), jangan ulang dari 0
+        "fragment_retries": 3,
+        "continuedl": True,  # resume file parsial (.part)
         "skip_unavailable_fragments": False,
-        # Default matikan playlist expansion - Lumenfetch didesain buat download
-        # satu konten per URL, bukan playlist manager. Kalau ini dibiarkan aktif
-        # (default yt-dlp), URL yang kebetulan mengandung parameter playlist bisa
-        # diam-diam mendownload banyak entry dan saling menimpa nama file yang sama.
-        # Cuma dibuka (False) untuk multi-item gambar & --playlist all yang disengaja.
-        "noplaylist": not indexed,
-        # Player client alternatif buat YouTube - membantu mengurangi kemunculan
-        # error "Sign in to confirm you're not a bot" tanpa perlu cookies.
+        "noplaylist": not playlist_all,
         "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
     }
 
     if force_single_item:
-        # "noplaylist" TIDAK berefek buat URL playlist murni (tanpa "v=") -
-        # dikonfirmasi maintainer yt-dlp sendiri (issue #5215, "expected
-        # behavior" bukan bug yt-dlp). playlist_items="1" independen dari
-        # noplaylist dan memaksa cuma entry PERTAMA yang diambil, apa pun
-        # kondisinya - ini yang benar-benar mencegah seluruh playlist
-        # kedownload dan saling menimpa nama file yang sama.
         opts["playlist_items"] = "1"
 
-    cookies = build_cookies_from_browser(cookies_browser)
-    if cookies:
-        opts["cookiesfrombrowser"] = cookies
+    apply_cookie_opts(opts, cookies_browser, cookies_file)
 
     if choice.output_kind == "video":
         opts["format"] = _quality_to_format_selector(choice.quality, choice.fmt)
         opts["merge_output_format"] = choice.fmt
-        # Merge audio+video ditangani otomatis oleh yt-dlp lewat merge_output_format.
-        # EmbedThumbnail cuma didukung yt-dlp untuk container tertentu (mp3, mkv/mka,
-        # ogg/opus/flac, m4a/mp4/m4v/mov) - WEBM TIDAK ada di daftar itu dan bakal
-        # selalu raise EmbedThumbnailPPError kalau dipaksakan, padahal video-nya
-        # sendiri sudah berhasil didownload utuh. Jadi thumbnail sengaja di-skip
-        # khusus buat WEBM, bukan sekadar gagal diam-diam.
         postprocessors: list[dict] = []
         if choice.fmt in EMBEDDABLE_VIDEO_FORMATS:
             postprocessors.append({"key": "EmbedThumbnail"})
@@ -396,40 +292,17 @@ def _build_ydl_opts(
         _apply_subs_metadata_opts(opts, postprocessors, choice)
         opts["postprocessors"] = postprocessors
 
-    elif choice.output_kind == "audio":
+    else:  # audio -> MP3
         opts["format"] = "bestaudio/best"
         postprocessors = [
             {
                 "key": "FFmpegExtractAudio",
-                "preferredcodec": choice.fmt,
+                "preferredcodec": "mp3",
                 "preferredquality": _audio_quality_to_kbps(choice.quality),
             }
         ]
         _apply_subs_metadata_opts(opts, postprocessors, choice, audio=True)
         opts["postprocessors"] = postprocessors
-
-    elif choice.output_kind == "image":
-        if choice.is_video_thumbnail:
-            # Ini "Gambar (thumbnail)" dari menu VIDEO - user cuma minta
-            # thumbnail resmi dari platform, BUKAN video utuh. format="best"
-            # di sini bakal salah pilih stream video kualitas terbaik dan
-            # download-nya PENUH, cuma buat nanti "diconvert" jadi gambar
-            # (hasilnya paling cuma frame pertama, boros bandwidth & waktu,
-            # dan itu bukan thumbnail resmi platform sama sekali). Yang
-            # bener: skip_download + writethumbnail, TANPA set "format" -
-            # yt-dlp tinggal ambil file thumbnail-nya langsung.
-            opts["skip_download"] = True
-            opts["writethumbnail"] = True
-        else:
-            opts["format"] = "best"
-            opts["skip_download"] = False
-
-        if multi_item and choice.selected_indices:
-            # selected_indices dari options.py 0-indexed (buat indexing Python list),
-            # tapi playlist_items yt-dlp butuh 1-indexed dipisah koma. Tanpa ini,
-            # pilihan "nomor tertentu" user diam-diam diabaikan dan semua entry
-            # tetap kedownload (atau sebaliknya, cuma entry pertama yang kena).
-            opts["playlist_items"] = ",".join(str(i + 1) for i in choice.selected_indices)
 
     return opts
 

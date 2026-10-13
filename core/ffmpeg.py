@@ -18,7 +18,7 @@ def is_available() -> bool:
 
 
 def exe() -> str:
-    """Nama/path executable ffmpeg yang dipakai convert_image & yt-dlp."""
+    """Nama/path executable ffmpeg yang dipakai yt-dlp (merge MP4 / ekstrak MP3)."""
     return find_system_ffmpeg() or "ffmpeg"
 
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Lumenfetch - Universal Media Downloader (CLI)
+Lumenfetch - YouTube Downloader (CLI): MP4 & MP3.
 Entry point aplikasi.
 """
 
@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -18,12 +17,14 @@ from rich.prompt import Prompt
 
 from core import options, update_checker, utils
 from core.constants import (
+    AUDIO_FORMAT,
     BATCH_DEFAULT_JOBS,
     BATCH_MAX_JOBS,
     PLAYLIST_MODE_ALL,
     PLAYLIST_MODE_SINGLE,
     SUBTITLE_LANGS_DEFAULT,
     VERSION,
+    VIDEO_FORMAT,
 )
 from core.detector import DetectionError, detect, is_valid_url
 from core.downloader import download
@@ -31,7 +32,7 @@ from core.errors import DownloadCancelled, DownloadFailed
 
 console = Console()
 
-# Re-export agar test lama (`main.pyperclip`, `main.static_ffmpeg`, ...) tetap jalan.
+# Re-export agar test (`main.pyperclip`, `main.static_ffmpeg`) tetap jalan.
 try:
     import pyperclip as _pyperclip_mod  # noqa: F401
 except ImportError:  # pragma: no cover - lingkungan tanpa clipboard
@@ -61,11 +62,7 @@ def _get_pyperclip():
 
 
 def _ensure_ffmpeg() -> bool:
-    """Pastikan ffmpeg tersedia: sistem dulu, bundled fallback (lazy).
-
-    Return True kalau siap, False kalau gagal (fitur terkait mungkin gagal
-    dengan pesan ramah, tapi aplikasi tetap jalan).
-    """
+    """Pastikan ffmpeg tersedia: sistem dulu, bundled fallback (lazy)."""
     from core import ffmpeg as _ffmpeg  # noqa: PLC0415
 
     if _ffmpeg.is_available():
@@ -90,14 +87,15 @@ def _ensure_ffmpeg() -> bool:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         prog="lumenfetch",
-        description="Universal media downloader - paste link, biar sisanya otomatis.",
+        description="YouTube downloader - MP4 & MP3.",
     )
-    p.add_argument("url", nargs="?", default=None, help="URL media langsung (tanpa menu utama)")
-    p.add_argument("-f", "--format", dest="fmt", default=None, help="Format output (mis. mp4, mp3, jpg)")
-    p.add_argument("-q", "--quality", default=None, help="Quality (video: Best/1080p/720p/480p/360p/Worst, audio: Best/320kbps/192kbps/128kbps)")
-    p.add_argument("-t", "--type", dest="output_type", choices=["video", "audio", "image"], default=None)
+    p.add_argument("url", nargs="?", default=None, help="URL video/playlist YouTube langsung")
+    p.add_argument("-t", "--type", dest="output_type", choices=["video", "audio"], default=None)
+    p.add_argument("-f", "--format", dest="fmt", choices=["mp4", "mp3"], default=None)
+    p.add_argument("-q", "--quality", default=None, help="Quality video (Best/1080p/720p/480p/360p/Worst) atau bitrate MP3 (Best/320kbps/192kbps/128kbps)")
     p.add_argument("-o", "--output", default=None, help="Folder output (override config)")
     p.add_argument("--cookies", default=None, help="Cookies browser (chrome/firefox/edge/brave/opera/vivaldi/safari/none)")
+    p.add_argument("--cookies-file", default=None, help="File cookies format Netscape")
     p.add_argument("--max-retry", type=int, default=None)
     p.add_argument("--playlist", choices=[PLAYLIST_MODE_SINGLE, PLAYLIST_MODE_ALL], default=None)
     p.add_argument("--subs", action="store_true", help="Download subtitle bila tersedia")
@@ -135,29 +133,24 @@ def apply_cli_overrides(choice, args: argparse.Namespace):
 
 
 def build_choice_from_args(content, args: argparse.Namespace):
-    """Bangun DownloadChoice non-interaktif dari flag CLI (untuk url/batch/-y)."""
+    """Bangun DownloadChoice non-interaktif dari flag CLI."""
     from core.options import DownloadChoice  # noqa: PLC0415
 
-    kind = args.output_type
-    if kind is None:
-        kind = "video" if content.content_type == "VIDEO" else ("audio" if content.content_type == "AUDIO" else "image")
-    fmt = (args.fmt or "").lower() or None
-    if fmt is None:
-        fmt = {"video": "mp4", "audio": "mp3", "image": "jpg"}[kind]
-    quality = args.quality or "Best"
-    choice = DownloadChoice(output_kind=kind, quality=quality, fmt=fmt)
+    kind = args.output_type or ("audio" if content.content_type == "AUDIO" else "video")
+    if args.fmt:
+        fmt = args.fmt.lower()
+    else:
+        fmt = AUDIO_FORMAT if kind == "audio" else VIDEO_FORMAT
+    if kind == "audio" and fmt != AUDIO_FORMAT:
+        fmt = AUDIO_FORMAT
+    if kind == "video" and fmt != VIDEO_FORMAT:
+        fmt = VIDEO_FORMAT
+    choice = DownloadChoice(output_kind=kind, quality=args.quality or "Best", fmt=fmt)
     return apply_cli_overrides(choice, args)
 
 
 def try_clipboard_url(config: dict, last_prompted: str | None) -> tuple[str | None, str | None]:
-    """
-    Return (url_yang_dipakai_atau_None, clip_terakhir_yang_sudah_ditanyakan).
-
-    Tidak menawarkan isi clipboard yang SAMA dua kali berturut-turut kalau
-    user sudah pernah ditanya soal itu sebelumnya (baik dipakai atau
-    ditolak) - tanpa ini, user harus jawab 'n' berulang kali tiap loop kalau
-    isi clipboard belum berubah dari sebelumnya.
-    """
+    """Tawarkan URL YouTube dari clipboard (sekali per isi, tidak berulang)."""
     if not config.get("auto_paste", True):
         return None, last_prompted
 
@@ -174,7 +167,7 @@ def try_clipboard_url(config: dict, last_prompted: str | None) -> tuple[str | No
         return None, last_prompted
 
     if clip == last_prompted:
-        return None, last_prompted  # sudah pernah ditanyakan, jangan tanya lagi
+        return None, last_prompted
 
     console.print(f"\n📋 Clipboard terdeteksi: {clip}")
     if Prompt.ask("Gunakan URL ini? [Y/n]", default="y").lower().startswith("y"):
@@ -230,6 +223,14 @@ def _settings_change_template(config: dict) -> None:
 
 def _settings_change_cookies(config: dict) -> None:
     config["cookies_browser"] = options.ask_cookies_browser()
+    if not config["cookies_browser"]:
+        raw = Prompt.ask(
+            "File cookies Netscape (opsional, kosongkan bila tidak pakai) [dim](export via extension 'Get cookies.txt LOCALLY')[/dim]",
+            default=config.get("cookies_file") or "",
+        ).strip()
+        config["cookies_file"] = raw or None
+    else:
+        config["cookies_file"] = None
     utils.save_config(config)
 
 
@@ -241,94 +242,14 @@ def _settings_reset(config: dict) -> None:
 
 
 def _warn_if_pure_playlist(content, playlist_mode: str = PLAYLIST_MODE_SINGLE) -> None:
-    if content.content_type in ("VIDEO", "AUDIO") and len(content.entries) > 1:
+    if content.entries and len(content.entries) > 1:
         if playlist_mode == PLAYLIST_MODE_ALL:
             console.print(f"[cyan]ℹ️  Playlist terdeteksi: {len(content.entries)} video akan didownload semua.[/cyan]")
             return
         console.print(
             f"[yellow]⚠️  URL ini playlist berisi {len(content.entries)} video - "
-            "Lumenfetch cuma download SATU per URL (video pertama), bukan "
-            "playlist manager. Kalau mau video tertentu, paste link video "
-            "itu langsung. (Gunakan --playlist all untuk semua.)[/yellow]"
+            "cuma video pertama yang didownload. (Gunakan --playlist all untuk semua.)[/yellow]"
         )
-
-
-def _needs_ffmpeg(choice) -> bool:
-    return choice.output_kind in ("video", "audio")
-
-
-def _download_via_instagram(content, choice, output_folder: Path, naming_template: str, max_retry: int = 3) -> tuple[dict, str]:
-    from core import instagram_fallback  # noqa: PLC0415
-
-    instaloader_start = time.time()
-    result = instagram_fallback.download_photos(
-        content,
-        choice.selected_indices,
-        choice.fmt,
-        output_folder,
-        naming_template,
-        max_retry=max_retry,
-    )
-    total_size = sum(p.stat().st_size for p in result.paths if p.exists())
-    entry_extra = {
-        "size": utils.format_size(total_size),
-        "size_bytes": total_size,
-        "elapsed_seconds": time.time() - instaloader_start,
-        "success": result.success_count > 0,
-    }
-    if result.failed_count == 0:
-        console.print(
-            f"\n✅ Selesai!\n"
-            f"   File  : {result.success_count} gambar tersimpan di {output_folder}\n"
-            f"   Ukuran total: {utils.format_size(total_size)}"
-        )
-    elif result.success_count > 0:
-        console.print(
-            f"\n⚠️  Selesai sebagian!\n"
-            f"   File  : {result.success_count}/{result.total_count} gambar berhasil "
-            f"tersimpan di {output_folder}\n"
-            f"   Ukuran total: {utils.format_size(total_size)}\n"
-            f"   [yellow]{result.failed_count} gambar gagal didownload[/yellow]"
-        )
-    else:
-        console.print("[red]❌ Semua gambar gagal didownload[/red]")
-    return entry_extra, "instagram"
-
-
-def _download_via_ytdlp(content, choice, output_folder: Path, naming_template: str, config: dict) -> dict:
-    if _needs_ffmpeg(choice):
-        _ensure_ffmpeg()
-    result = download(
-        content,
-        choice,
-        output_folder,
-        naming_template,
-        max_retry=config.get("max_retry", 3),
-        cookies_browser=config.get("cookies_browser"),
-    )
-    entry_extra = {
-        "size": utils.format_size(result.size_bytes),
-        "size_bytes": result.size_bytes,
-        "elapsed_seconds": result.elapsed_seconds,
-        "success": result.file_count > 0,
-    }
-    if not entry_extra["success"]:
-        console.print("[red]❌ Terjadi kesalahan saat download - file hasil tidak ditemukan[/red]")
-    elif result.file_count > 1:
-        console.print(
-            f"\n✅ Selesai!\n"
-            f"   File  : {result.file_count} gambar tersimpan di {output_folder}\n"
-            f"   Ukuran total: {utils.format_size(result.size_bytes)}\n"
-            f"   Waktu : {result.elapsed_seconds:.0f} detik"
-        )
-    else:
-        console.print(
-            f"\n✅ Selesai!\n"
-            f"   File  : {result.filepath}\n"
-            f"   Ukuran: {utils.format_size(result.size_bytes)}\n"
-            f"   Waktu : {result.elapsed_seconds:.0f} detik"
-        )
-    return entry_extra
 
 
 def _save_history_threadsafe(config: dict, entry: dict) -> None:
@@ -343,13 +264,13 @@ def process_url(
     auto_confirm: bool = False,
     playlist_mode: str | None = None,
 ) -> bool:
-    """Proses satu URL. Return True bila sukses. Backward-compat: tanpa override tetap interaktif."""
+    """Proses satu URL YouTube. Return True bila sukses."""
     from core.log import get_logger  # noqa: PLC0415
 
     log = get_logger()
     console.print("\n🔍 Mendeteksi konten...")
     try:
-        content = detect(url, cookies_browser=config.get("cookies_browser"))
+        content = detect(url, cookies_browser=config.get("cookies_browser"), cookies_file=config.get("cookies_file"))
     except DetectionError as e:
         console.print(f"[red]{e}[/red]")
         log.warning("detect gagal %s: %s", url, e)
@@ -368,6 +289,8 @@ def process_url(
         if playlist_mode:
             choice.playlist_mode = playlist_mode
 
+    _ensure_ffmpeg()
+
     output_folder = Path(config["download_folder"]).expanduser()
     filename_preview = utils.build_filename(content.platform, content.title, choice.fmt, config["naming_template"])
 
@@ -384,13 +307,39 @@ def process_url(
     }
 
     try:
-        if content.raw_info.get("source") == "instaloader":
-            entry_extra, _ = _download_via_instagram(
-                content, choice, output_folder, config["naming_template"], max_retry=config.get("max_retry", 3)
+        result = download(
+            content,
+            choice,
+            output_folder,
+            config["naming_template"],
+            max_retry=config.get("max_retry", 3),
+            cookies_browser=config.get("cookies_browser"),
+            cookies_file=config.get("cookies_file"),
+        )
+        entry.update(
+            {
+                "size": utils.format_size(result.size_bytes),
+                "size_bytes": result.size_bytes,
+                "elapsed_seconds": result.elapsed_seconds,
+                "success": result.file_count > 0,
+            }
+        )
+        if not entry["success"]:
+            console.print("[red]❌ Terjadi kesalahan saat download - file hasil tidak ditemukan[/red]")
+        elif result.file_count > 1:
+            console.print(
+                f"\n✅ Selesai!\n"
+                f"   File  : {result.file_count} video tersimpan di {output_folder}\n"
+                f"   Ukuran total: {utils.format_size(result.size_bytes)}\n"
+                f"   Waktu : {result.elapsed_seconds:.0f} detik"
             )
-            entry.update(entry_extra)
         else:
-            entry.update(_download_via_ytdlp(content, choice, output_folder, config["naming_template"], config))
+            console.print(
+                f"\n✅ Selesai!\n"
+                f"   File  : {result.filepath}\n"
+                f"   Ukuran: {utils.format_size(result.size_bytes)}\n"
+                f"   Waktu : {result.elapsed_seconds:.0f} detik"
+            )
     except DownloadCancelled:
         console.print("[yellow]❌ Download dibatalkan oleh user[/yellow]")
         log.info("download dibatalkan %s", url)
@@ -423,23 +372,25 @@ def process_batch(urls: list[str], config: dict, args: argparse.Namespace) -> di
     def _one(u: str) -> bool:
         try:
             content_probe = None
-            # Deteksi ringan untuk default non-interaktif? Langsung build choice
-            # generik bila deteksi penuh gagal di process_url (tetap dilaporkan).
             choice = None
             if args.output_type or args.fmt or args.quality or args.yes or args.playlist or args.subs:
-                # Butuh content untuk default kind/format; deteksi di sini
-                # agar choice_override bisa dibangun sebelum process_url.
                 try:
-                    content_probe = detect(u, cookies_browser=config.get("cookies_browser"))
+                    content_probe = detect(
+                        u,
+                        cookies_browser=config.get("cookies_browser"),
+                        cookies_file=config.get("cookies_file"),
+                    )
                     choice = build_choice_from_args(content_probe, args)
                 except DetectionError:
                     choice = None
             if choice is not None:
                 return process_url(u, config, choice_override=choice, auto_confirm=True, playlist_mode=args.playlist)
-            # Fallback: butuh interaksi? di batch selalu non-interaktif:
-            # pakai default Best bila tidak ada flag.
             try:
-                probe = content_probe or detect(u, cookies_browser=config.get("cookies_browser"))
+                probe = content_probe or detect(
+                    u,
+                    cookies_browser=config.get("cookies_browser"),
+                    cookies_file=config.get("cookies_file"),
+                )
                 default_choice = build_choice_from_args(probe, args)
             except DetectionError:
                 return False
@@ -465,12 +416,8 @@ def process_batch(urls: list[str], config: dict, args: argparse.Namespace) -> di
 
 
 def main(argv: list[str] | None = None) -> int:
-    # argv=None berarti "tidak ada argumen CLI" (mode interaktif) - sengaja
-    # TIDAK membaca sys.argv di sini agar pemanggilan programatik
-    # (termasuk unit test yang memanggil main.main() di dalam pytest,
-    # di mana sys.argv berisi argumen pytest seperti 'tests/ -q')
-    # tidak ikut terparse. Entry point script meneruskan sys.argv[1:]
-    # secara eksplisit (lihat __main__ di bawah).
+    # argv=None berarti mode interaktif (tidak baca sys.argv agar
+    # pemanggilan programatik/test tidak kemakan argumen pytest).
     args = parse_args([] if argv is None else argv)
     from core.log import setup as _setup_log  # noqa: PLC0415
 
@@ -481,11 +428,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     config = utils.load_config()
-    # Override config dari flag (tanpa simpan permanen).
     if args.output:
         config["download_folder"] = str(Path(args.output).expanduser())
     if args.cookies is not None:
         config["cookies_browser"] = None if str(args.cookies).lower() == "none" else str(args.cookies).lower()
+    if args.cookies_file is not None:
+        config["cookies_file"] = str(Path(args.cookies_file).expanduser()) if str(args.cookies_file).strip() else None
     if args.max_retry is not None:
         config["max_retry"] = max(0, int(args.max_retry))
     if args.no_clipboard:
@@ -495,7 +443,6 @@ def main(argv: list[str] | None = None) -> int:
         options.show_history_table(config.get("history", []))
         return 0
 
-    # Mode non-interaktif: --batch atau URL posisi.
     if args.batch:
         try:
             urls = read_batch_file(args.batch)
@@ -515,11 +462,16 @@ def main(argv: list[str] | None = None) -> int:
         has_update, installed_version, latest_version = update_checker.check_for_update()
         if has_update and latest_version:
             options.show_update_notice(installed_version, latest_version)
-        # Non-interaktif bila ada flag pembeda; else tetap tanya pilihan.
-        non_interactive = bool(args.output_type or args.fmt or args.quality or args.yes or args.playlist or args.subs or args.embed_metadata or args.embed_subs)
+        non_interactive = bool(
+            args.output_type or args.fmt or args.quality or args.yes or args.playlist or args.subs or args.embed_metadata or args.embed_subs
+        )
         if non_interactive:
             try:
-                content = detect(args.url, cookies_browser=config.get("cookies_browser"))
+                content = detect(
+                    args.url,
+                    cookies_browser=config.get("cookies_browser"),
+                    cookies_file=config.get("cookies_file"),
+                )
             except DetectionError as e:
                 console.print(f"[red]{e}[/red]")
                 return 1
@@ -539,7 +491,7 @@ def main(argv: list[str] | None = None) -> int:
     while True:
         clip_url, last_clip_prompted = try_clipboard_url(config, last_clip_prompted)
 
-        raw = clip_url or Prompt.ask("\nMasukkan URL [dim](q: keluar, history, settings, help)[/dim]").strip()
+        raw = clip_url or Prompt.ask("\nMasukkan URL YouTube [dim](q: keluar, history, settings, help)[/dim]").strip()
 
         if raw.lower() in ("q", "quit"):
             console.print("\n👋 Sampai jumpa!")
@@ -561,7 +513,14 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as e:  # noqa: BLE001
             console.print(f"[red]❌ Terjadi kesalahan tak terduga: {e}[/red]")
 
-        if not options.ask_again():
+        nxt = options.ask_again_or_url()
+        if isinstance(nxt, str):
+            try:
+                process_url(nxt, config)
+            except Exception as e:  # noqa: BLE001
+                console.print(f"[red]❌ Terjadi kesalahan tak terduga: {e}[/red]")
+            continue
+        if not nxt:
             console.print("\n👋 Sampai jumpa!")
             break
     return 0

@@ -31,16 +31,26 @@ ERROR_KIND_DISK = "disk"
 ERROR_KIND_RATE_LIMIT = "rate_limit"
 ERROR_KIND_REMOVED = "removed"
 ERROR_KIND_UNSUPPORTED = "unsupported"
+ERROR_KIND_BLOCKED = "blocked"
+ERROR_KIND_COOKIES = "cookies"
 ERROR_KIND_UNKNOWN = "unknown"
 
 _FRIENDLY_MESSAGES = {
     ERROR_KIND_CONNECTION: "❌ Koneksi internet bermasalah, coba lagi",
-    ERROR_KIND_PRIVATE: "❌ Konten ini private / tidak bisa diakses",
+    ERROR_KIND_PRIVATE: "❌ Konten ini private / tidak bisa diakses - coba aktifkan Cookies dari Browser di settings",
     ERROR_KIND_FORMAT: "❌ Format tidak tersedia untuk konten ini",
     ERROR_KIND_DISK: "❌ Tidak cukup ruang disk",
     ERROR_KIND_RATE_LIMIT: "❌ Terlalu banyak request ke platform ini - tunggu sebentar lalu coba lagi",
     ERROR_KIND_REMOVED: "❌ Konten ini sudah dihapus / tidak lagi tersedia",
     ERROR_KIND_UNSUPPORTED: "❌ URL tidak valid atau tidak didukung",
+    ERROR_KIND_BLOCKED: (
+        "❌ Platform memblokir request otomatis (bot-check) - update yt-dlp "
+        "(pip install --upgrade yt-dlp) lalu aktifkan Cookies dari Browser di settings"
+    ),
+    ERROR_KIND_COOKIES: (
+        "❌ Gagal membaca cookies dari browser - tutup browser-nya sampai "
+        "benar-benar tertutup (cek Task Manager), lalu coba lagi"
+    ),
     ERROR_KIND_UNKNOWN: "❌ Terjadi kesalahan saat download",
 }
 
@@ -50,6 +60,18 @@ def classify_error(exc: Exception) -> str:
     msg = str(exc).lower()
     if any(hint in msg for hint in CONNECTION_ERROR_HINTS):
         return ERROR_KIND_CONNECTION
+    if "could not copy" in msg and "cookie" in msg:
+        # File cookies dikunci browser yang masih terbuka (yt-dlp #7271).
+        # Bukan URL rusak - harus ditangani khusus (coba tanpa cookies).
+        return ERROR_KIND_COOKIES
+    if "failed to decrypt" in msg or "dpapi" in msg or "failed to load cookies" in msg:
+        # Cookies terenkripsi tak bisa didekripsi (yt-dlp #10927, umum di
+        # Edge/Chrome Windows) - sama: bukan URL rusak, fallback tanpa cookies.
+        return ERROR_KIND_COOKIES
+    if "unexpected response from webpage request" in msg or "confirm you are on the latest version" in msg:
+        # Challenge bot-check yang cuma lolos pakai impersonation + cookies,
+        # bukan URL rusak.
+        return ERROR_KIND_BLOCKED
     if "private" in msg or "login required" in msg or "login" in msg or "unavailable" in msg:
         return ERROR_KIND_PRIVATE
     if "unsupported url" in msg:
@@ -60,21 +82,37 @@ def classify_error(exc: Exception) -> str:
         return ERROR_KIND_DISK
     if "429" in msg or "too many requests" in msg or "rate-limit" in msg or "rate limit" in msg:
         return ERROR_KIND_RATE_LIMIT
-    if "removed" in msg or "deleted" in msg or "no longer available" in msg:
+    if "404" in msg or "not found" in msg or "removed" in msg or "deleted" in msg or "no longer available" in msg:
         return ERROR_KIND_REMOVED
     return ERROR_KIND_UNKNOWN
 
 
+def _curl_cffi_available() -> bool:
+    import importlib.util
+
+    return importlib.util.find_spec("curl_cffi") is not None
+
+
+def blocked_message() -> str:
+    """Pesan blocked yang adaptif: sebut curl_cffi hanya bila belum terinstall."""
+    base = _FRIENDLY_MESSAGES[ERROR_KIND_BLOCKED]
+    if not _curl_cffi_available():
+        base += " + install paket 'curl_cffi' (pip install curl_cffi)"
+    return base
+
+
 def friendly_message(kind: str) -> str:
     """Pesan ramah untuk kind hasil classify_error()."""
+    if kind == ERROR_KIND_BLOCKED:
+        return blocked_message()
     return _FRIENDLY_MESSAGES.get(kind, _FRIENDLY_MESSAGES[ERROR_KIND_UNKNOWN])
 
 
 def detection_message(exc: Exception) -> str:
-    """Pesan deteksi: sama dengan friendly, tapi unknown -> 'URL tidak valid'."""
+    """Pesan deteksi: sama dengan friendly, tapi unknown -> URL YouTube tidak valid."""
     kind = classify_error(exc)
     if kind == ERROR_KIND_FORMAT:
         return "Konten ini tidak berisi video yang bisa didownload"
     if kind == ERROR_KIND_UNKNOWN:
-        return "URL tidak valid atau tidak didukung"
+        return "URL bukan link YouTube yang valid atau tidak didukung"
     return friendly_message(kind).lstrip("❌ ").strip()

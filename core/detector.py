@@ -1,7 +1,7 @@
 """
 detector.py
-Deteksi platform, tipe konten (VIDEO/IMAGE/AUDIO), judul, dan durasi
-dari sebuah URL memakai yt-dlp (tanpa download).
+Deteksi info video YouTube (judul, durasi, playlist) dari URL memakai yt-dlp,
+tanpa mendownload.
 """
 
 from __future__ import annotations
@@ -12,13 +12,13 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import yt_dlp
 
-from core.errors import DetectionError, detection_message
-from core.utils import build_cookies_from_browser
+from core.constants import YOUTUBE_HOSTS
+from core.errors import DetectionError, classify_error, detection_message
 
-# Re-export agar `from core.detector import DetectionError` tetap jalan.
 __all__ = [
     "DetectionError",
     "DetectedContent",
+    "is_youtube_url",
     "is_valid_url",
     "strip_playlist_context",
     "detect",
@@ -30,77 +30,51 @@ URL_PATTERN = re.compile(r"^https?://[^\s]+$", re.IGNORECASE)
 @dataclass
 class DetectedContent:
     url: str
-    platform: str
     title: str
-    content_type: str  # "VIDEO" | "IMAGE" | "AUDIO"
+    content_type: str = "VIDEO"  # "VIDEO" | "AUDIO" (audio = stream audio YouTube)
     duration: float | None = None
-    entries: list = field(default_factory=list)  # untuk carousel/multi-image
+    entries: list = field(default_factory=list)  # untuk playlist
     raw_info: dict = field(default_factory=dict)
+
+    @property
+    def platform(self) -> str:
+        return "YouTube"
+
+
+def _host(url: str) -> str:
+    try:
+        return urlsplit(url).netloc.lower().split(":")[0]
+    except ValueError:
+        return ""
+
+
+def is_youtube_url(url: str) -> bool:
+    """True bila URL http(s) dengan host domain YouTube yang dikenal."""
+    if not isinstance(url, str):
+        return False
+    url = url.strip()
+    if not url.lower().startswith(("http://", "https://")):
+        return False
+    host = _host(url)
+    return any(host == h or host.endswith("." + h) for h in YOUTUBE_HOSTS)
 
 
 def is_valid_url(text: str) -> bool:
+    """URL YouTube yang valid (http/https + host YouTube)."""
     if not isinstance(text, str):
         return False
-    return bool(URL_PATTERN.match(text.strip()))
-
-
-def _guess_content_type(info: dict) -> str:
-    """Tentukan VIDEO / AUDIO / IMAGE berdasarkan info dari yt-dlp."""
-    is_playlist = info.get("_type") == "playlist"
-
-    if is_playlist:
-        entries = info.get("entries") or []
-        # Kalau semua entry gak punya video codec -> anggap kumpulan gambar
-        if entries and all(_looks_like_image(e) for e in entries):
-            return "IMAGE"
-        return "VIDEO"
-
-    if _looks_like_image(info):
-        return "IMAGE"
-
-    vcodec = info.get("vcodec")
-    if vcodec and vcodec != "none":
-        return "VIDEO"
-
-    acodec = info.get("acodec")
-    if acodec and acodec != "none":
-        return "AUDIO"
-
-    # fallback: kalau ada duration dianggap video, kalau enggak dianggap image
-    return "VIDEO" if info.get("duration") else "IMAGE"
-
-
-def _looks_like_image(entry: dict) -> bool:
-    if not isinstance(entry, dict):
-        return False
-    ext = (entry.get("ext") or "").lower()
-    if ext in {"jpg", "jpeg", "png", "webp"}:
-        return True
-    # Tanda kurung eksplisit: (vcodec none) DAN (tanpa durasi).
-    return (entry.get("vcodec") == "none") and (not entry.get("duration"))
+    text = text.strip()
+    return bool(URL_PATTERN.match(text)) and is_youtube_url(text)
 
 
 def strip_playlist_context(url: str) -> str:
     """
     Buang parameter "list" (dan "index") dari URL kalau URL itu jelas
-    menunjuk ke SATU video spesifik (ada parameter identitas video kayak
-    "v=" di YouTube, atau path /shorts/, /embed/), bukan link playlist murni.
-
-    Kenapa ini perlu: link video biasa yang dicopy pas lagi nonton di dalam
-    playlist YouTube otomatis kebawa "&list=...". detect() sengaja pakai
-    "noplaylist": False (biar galeri multi-gambar - Pinterest board, Reddit
-    gallery, tweet multi-foto - bisa kedeteksi lengkap semua entry-nya).
-    Tanpa strip ini, video biasa yang kebawa "list=" bakal salah kena narik
-    METADATA PLAYLIST-nya (bukan video itu sendiri) - judul hasil deteksi
-    jadi salah (nama playlist, bukan judul video), prosesnya jauh lebih
-    lambat/berat (yt-dlp narik semua entry playlist walau skip_download),
-    dan lebih rawan kena rate-limit (429) dari YouTube.
-
-    Galeri multi-gambar TIDAK terpengaruh sama sekali oleh fungsi ini,
-    karena mereka tidak pernah punya parameter "list" di URL-nya.
+    menunjuk ke SATU video spesifik (ada "v=", /shorts/, /embed/, youtu.be),
+    bukan link playlist murni. Tanpa ini, video biasa yang kebawa "list="
+    salah narik metadata playlist-nya (judul salah, lambat, rawan 429).
     """
     parts = urlsplit(url)
-    # Preserve urutan & duplikat: kerja di level list, bukan dict.
     pairs = parse_qsl(parts.query, keep_blank_values=True)
 
     if not any(k == "list" for k, _ in pairs):
@@ -111,15 +85,10 @@ def strip_playlist_context(url: str) -> str:
         "v" in query_dict
         or "/shorts/" in parts.path
         or "/embed/" in parts.path
-        # youtu.be/<video-id> - video ID-nya ada di PATH, bukan di query "v=".
-        # Ini format link yang paling sering muncul (tombol Share YouTube),
-        # jadi paling krusial buat gak kelewat. Dicek exact match / subdomain
-        # (bukan endswith longgar) biar domain asing semacam "notyoutu.be"
-        # gak ikut ke-treat sebagai youtu.be.
         or ((parts.netloc == "youtu.be" or parts.netloc.endswith(".youtu.be")) and parts.path.strip("/") != "")
     )
     if not has_specific_video:
-        return url  # kemungkinan besar ini memang link playlist murni, biarkan apa adanya
+        return url
 
     filtered = [(k, v) for k, v in pairs if k not in ("list", "index")]
     new_query = urlencode(filtered)
@@ -127,7 +96,6 @@ def strip_playlist_context(url: str) -> str:
 
 
 def _base_ydl_opts() -> dict:
-    """Opsi yt-dlp dasar yang dipakai bersama detector & downloader."""
     return {
         "quiet": True,
         "no_warnings": True,
@@ -135,56 +103,60 @@ def _base_ydl_opts() -> dict:
     }
 
 
-def detect(url: str, cookies_browser: str | None = None) -> DetectedContent:
-    """Ekstrak info konten dari URL tanpa mendownload."""
+def _with_cookies_note(text: str) -> str:
+    from core.errors import friendly_message  # noqa: PLC0415
+
+    note = friendly_message("cookies").lstrip("❌ ").strip()
+    return f"{note}. {text}"
+
+
+def detect(url: str, cookies_browser: str | None = None, cookies_file: str | None = None) -> DetectedContent:
+    """Ekstrak info video YouTube dari URL tanpa mendownload."""
+    from core.utils import apply_cookie_opts  # noqa: PLC0415 - hindari circular import
+
     if not is_valid_url(url):
-        raise DetectionError("URL tidak valid atau tidak didukung")
+        raise DetectionError("URL bukan link YouTube yang valid")
 
     url = strip_playlist_context(url)
 
     ydl_opts = _base_ydl_opts()
-    ydl_opts.update(
-        {
-            "skip_download": True,
-            "noplaylist": False,
-        }
-    )
+    ydl_opts.update({"skip_download": True, "noplaylist": False})
 
-    cookies = build_cookies_from_browser(cookies_browser)
-    if cookies:
-        ydl_opts["cookiesfrombrowser"] = cookies
+    has_cookies = apply_cookie_opts(ydl_opts, cookies_browser, cookies_file)
+
+    def _extract(opts: dict):
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            return ydl.extract_info(url, download=False)
 
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+        info = _extract(ydl_opts)
     except yt_dlp.utils.DownloadError as e:
-        msg = str(e).lower()
-        if "there is no video in this post" in msg or "no video formats" in msg:
-            # Lazy import: hindari circular import + hindari load
-            # instaloader yang berat kalau tidak dibutuhkan.
-            from core import instagram_fallback  # noqa: PLC0415
-
-            if instagram_fallback.is_instagram_url(url):
-                return instagram_fallback.detect_photo(url, cookies_browser=cookies_browser)
-            raise DetectionError("Konten ini tidak berisi video yang bisa didownload") from e
-        raise DetectionError(detection_message(e)) from e
+        if has_cookies and classify_error(e) == "cookies":
+            # Cookies gagal dibaca (browser terkunci/DPAPI): coba tanpa cookies.
+            ydl_opts.pop("cookiesfrombrowser", None)
+            ydl_opts.pop("cookiefile", None)
+            try:
+                info = _extract(ydl_opts)
+            except yt_dlp.utils.DownloadError as e2:
+                raise DetectionError(_with_cookies_note(detection_message(e2))) from e2
+            except Exception as e2:  # noqa: BLE001
+                raise DetectionError("URL bukan link YouTube yang valid") from e2
+        else:
+            raise DetectionError(detection_message(e)) from e
     except Exception as e:  # noqa: BLE001
-        raise DetectionError("URL tidak valid atau tidak didukung") from e
+        raise DetectionError("URL bukan link YouTube yang valid") from e
 
     if info is None:
-        raise DetectionError("URL tidak valid atau tidak didukung")
+        raise DetectionError("URL bukan link YouTube yang valid")
 
-    content_type = _guess_content_type(info)
     raw_entries = info.get("entries") or []
-    # Hindari duplikasi list besar: kalau sudah list, pakai langsung
-    # ( referensi ), kalau generator/iterable lain baru materialize.
     entries = raw_entries if isinstance(raw_entries, list) else list(raw_entries)
+    vcodec = info.get("vcodec")
 
     return DetectedContent(
         url=url,
-        platform=info.get("extractor_key") or info.get("extractor") or "Unknown",
         title=info.get("title") or info.get("id") or "untitled",
-        content_type=content_type,
+        content_type="AUDIO" if vcodec == "none" else "VIDEO",
         duration=info.get("duration"),
         entries=entries,
         raw_info=info,

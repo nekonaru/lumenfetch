@@ -158,7 +158,6 @@ def test_process_url_warns_user_about_pure_playlist(tmp_path, monkeypatch):
 
     playlist_content = DetectedContent(
         url="https://www.youtube.com/playlist?list=PLxxxxxx",
-        platform="YouTube",
         title="Judul Playlist",
         content_type="VIDEO",
         duration=None,
@@ -166,7 +165,7 @@ def test_process_url_warns_user_about_pure_playlist(tmp_path, monkeypatch):
         raw_info={},
     )
 
-    monkeypatch.setattr(main, "detect", lambda url, cookies_browser=None: playlist_content)
+    monkeypatch.setattr(main, "detect", lambda url, cookies_browser=None, **kwargs: playlist_content)
     monkeypatch.setattr(main.options, "show_content_panel", lambda content: None)
     monkeypatch.setattr(
         main.options, "resolve_choice", lambda content, avg_speed_bps=None: DownloadChoice(output_kind="video", fmt="mp4")
@@ -187,7 +186,6 @@ def test_process_url_no_warning_for_single_video(tmp_path, monkeypatch):
 
     single_content = DetectedContent(
         url="https://www.youtube.com/watch?v=abc",
-        platform="YouTube",
         title="Judul Video",
         content_type="VIDEO",
         duration=120,
@@ -195,7 +193,7 @@ def test_process_url_no_warning_for_single_video(tmp_path, monkeypatch):
         raw_info={},
     )
 
-    monkeypatch.setattr(main, "detect", lambda url, cookies_browser=None: single_content)
+    monkeypatch.setattr(main, "detect", lambda url, cookies_browser=None, **kwargs: single_content)
     monkeypatch.setattr(main.options, "show_content_panel", lambda content: None)
     monkeypatch.setattr(
         main.options, "resolve_choice", lambda content, avg_speed_bps=None: DownloadChoice(output_kind="video", fmt="mp4")

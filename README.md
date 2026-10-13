@@ -1,7 +1,7 @@
 <div align="center">
 
 ### 📥 Lumenfetch
-**Universal media downloader buat terminal - paste link, biar sisanya otomatis.**
+**YouTube downloader buat terminal - MP4 & MP3. Paste link, pilih quality, beres.**
 
 <br>
 
@@ -14,27 +14,28 @@
 
 ## ✨ Tentang Project
 
-**Lumenfetch** adalah CLI Python yang mengunduh media dari (hampir) situs mana pun - cukup paste link, dia otomatis deteksi platform dan tipe kontennya (video, audio, atau gambar), lalu kasih kamu opsi format & quality yang relevan buat konten itu. Didukung [yt-dlp](https://github.com/yt-dlp/yt-dlp) di belakang layar, jadi cakupannya luas: YouTube, TikTok, Instagram, Facebook, X/Twitter, Threads, Pinterest, Reddit, dan 1000+ situs lainnya.
+**Lumenfetch** adalah CLI Python buat download video YouTube jadi **MP4** atau ekstrak audionya jadi **MP3** - cukup paste link, dia otomatis deteksi judul, durasi, dan estimasi ukuran, lalu kasih kamu opsi quality yang relevan. Didukung [yt-dlp](https://github.com/yt-dlp/yt-dlp) di belakang layar, plus `curl_cffi` buat lolos bot-check YouTube.
 
-> _"Satu tool, semua platform - nggak perlu ganti-ganti downloader."_
+> _"Satu command, langsung MP4/MP3."_
 
 ## 🎯 Fitur
 
 | Fitur | Keterangan |
 |-------|------------|
-| 🔍 **Auto-detect** | Platform, judul, tipe konten (video/audio/gambar), dan durasi terdeteksi otomatis |
-| 🎛 **Opsi dinamis** | Menu quality & format menyesuaikan sendiri sesuai tipe konten yang terdeteksi |
-| 🎞 **Video** | Pilihan quality Best/1080p/720p/480p/360p/Worst, format MP4/WEBM/MKV, thumbnail otomatis ter-embed |
-| 🎵 **Audio** | Ekstrak ke MP3/M4A/WAV/FLAC dengan pilihan bitrate |
-| 🖼 **Gambar & carousel** | Download satu gambar, semua sekaligus, atau pilih nomor tertentu (misal post Instagram multi-foto) - foto Instagram pakai fallback `instaloader` otomatis, konversi JPG/PNG/WEBP berlaku di semua sumber gambar |
+| 🔍 **Auto-detect** | Judul, durasi, dan estimasi ukuran terdeteksi otomatis |
+| 🎛 **Opsi dinamis** | Menu quality menyesuaikan (video / audio saja) |
+| 🎞 **Video MP4** | Pilihan quality Best/1080p/720p/480p/360p/Worst, thumbnail otomatis ter-embed |
+| 🎵 **Audio MP3** | Pilihan bitrate Best/320kbps/192kbps/128kbps |
+| 📜 **Playlist** | Default video pertama saja; `--playlist all` untuk semua sekaligus |
+| 💬 **Subtitle & metadata** | Download subtitle (SRT) + embed ke MP4, opsional via flag/CLI |
 | 📋 **Auto-paste clipboard** | Kalau ada link valid di clipboard, langsung ditawarkan tanpa perlu paste manual - tidak akan nanya ulang isi clipboard yang sama berkali-kali |
 | 📊 **Progress bar real-time** | Kecepatan, ukuran, dan estimasi waktu tersisa lewat `rich` |
 | 📐 **Estimasi ukuran & waktu** | Muncul di menu pilih quality (video/audio), dihitung dari data yt-dlp + kecepatan rata-rata download kamu sebelumnya |
 | 🔄 **Auto-retry** | Error koneksi dicoba ulang otomatis (default 3x), error fatal (private/invalid) langsung dilaporkan |
 | 🗂 **Riwayat download** | 20 entri terakhir tersimpan, bisa dilihat kapan saja lewat command `history` |
 | ⚙️ **Pengaturan persisten** | Folder download (default: folder Downloads OS, ganti kapan saja), max retry, auto-paste, dan naming template diingat lewat `config.json` |
-| 🍪 **Cookies dari browser** | Opsional, buat konten yang minta login (misal Instagram) - ambil cookies dari Chrome/Firefox/Edge/dll |
-| 🧼 **Nama file aman** | Karakter ilegal disanitasi, duplikat otomatis dikasih suffix `(1)`, `(2)`, dst - termasuk untuk galeri/carousel multi-gambar |
+| 🍪 **Cookies browser/file** | Opsional, buat video age-restricted/private - dari Chrome/Firefox/Edge/dll atau file `cookies.txt` |
+| 🧼 **Nama file aman** | Karakter ilegal disanitasi, duplikat otomatis dikasih suffix `(1)`, `(2)`, dst |
 | 🔔 **Auto-check update yt-dlp** | Tiap dibuka, dicek ke PyPI apakah ada versi yt-dlp lebih baru - gagal cek (mis. offline) diam-diam diabaikan |
 
 ## 📦 Requirements
@@ -130,8 +131,8 @@ python main.py --help
 
 **Flag CLI:**
 ```
--t/--type {video,audio,image}  -f/--format  -q/--quality
--o/--output  --cookies  --max-retry  --playlist {single,all}
+-t/--type {video,audio}  -f/--format {mp4,mp3}  -q/--quality
+-o/--output  --cookies  --cookies-file  --max-retry  --playlist {single,all}
 --subs  --sub-langs en,id  --embed-subs  --embed-metadata
 --batch file.txt  --jobs 1-4  --no-clipboard  -y/--yes  -v/--verbose
 --history  --version
@@ -144,11 +145,11 @@ Masukkan URL (q: keluar, history, settings, help): https://youtube.com/watch?v=.
 
 Kalau ada link valid di clipboard, Lumenfetch akan menawarkannya duluan - tinggal jawab `y` kalau mau pakai itu.
 
-**Konten otomatis terdeteksi, lalu menu menyesuaikan:**
+**Link YouTube otomatis terdeteksi, lalu menu menyesuaikan:**
 
-- **Video** → pilih output (Video/Audio/Gambar thumbnail) → pilih quality → pilih format
-- **Audio** → langsung pilih format → pilih bitrate
-- **Gambar / carousel** → pilih format → kalau lebih dari satu gambar, pilih "semua" atau ketik nomor tertentu (contoh: `1,3,5`)
+- **Video** → pilih output Video (MP4) / Audio (MP3) → pilih quality
+- **Stream audio** → langsung pilih bitrate MP3
+- **Playlist** → default video pertama; `--playlist all` untuk semua
 
 **Konfirmasi nama file, lalu proses download berjalan** dengan progress bar real-time (kecepatan, ukuran, ETA). Tekan `Ctrl+C` kapan saja untuk membatalkan dengan aman.
 
@@ -158,36 +159,30 @@ Diketik langsung di prompt utama, menggantikan URL:
 
 | Command | Fungsi |
 |---------|--------|
-| `history` | Lihat 20 riwayat download terakhir (tanggal, platform, judul, format, ukuran, status) |
-| `settings` | Ganti folder default, max retry, auto-paste clipboard, naming template, atau cookies browser |
+| `history` | Lihat 20 riwayat download terakhir (tanggal, judul, format, ukuran, status) |
+| `settings` | Ganti folder default, max retry, auto-paste clipboard, naming template, atau cookies |
 | `help` | Tampilkan panduan singkat di dalam aplikasi |
 | `q` / `quit` | Keluar dari aplikasi |
 | `Ctrl+C` | Batalkan download yang sedang berjalan |
 
-## 🍪 Cookies dari Browser (Opsional)
+## 🍪 Cookies (Opsional)
 
-Beberapa platform, terutama Instagram, sekarang sering memblokir request yang "tidak keliatan login" meskipun kontennya publik. Kalau kamu sering ketemu error semacam itu, aktifkan fitur ini:
+Video age-restricted atau private butuh login. Kalau ketemu error semacam itu, aktifkan salah satu:
 
+**A. Cookies dari browser:**
 1. Buka Lumenfetch, ketik `settings`
-2. Pilih `[5] Pakai cookies dari browser`
-3. Pilih browser yang kamu pakai buat login ke platform tersebut (Chrome/Firefox/Edge/Brave/Opera/Vivaldi/Safari)
+2. Pilih `[5] Pakai cookies dari browser/file`
+3. Pilih browser di mana kamu sudah login YouTube (Chrome/Firefox/Edge/Brave/Opera/Vivaldi/Safari)
 
 Setelah aktif, Lumenfetch akan meminjam cookies dari browser itu setiap kali mendeteksi atau mendownload konten, seolah request-nya datang dari sesi browser kamu yang sudah login. Cukup pilih `[1] Nonaktifkan` di menu yang sama kalau mau matikan lagi.
 
-> **Catatan:** pastikan browser yang dipilih sedang tidak dalam keadaan tertutup total saat digunakan di beberapa OS (khususnya Chrome di Windows kadang mengunci file cookies saat browser terbuka). Kalau muncul error terkait cookies, coba tutup browser-nya dulu lalu ulangi.
+> **Penting:** browser yang dipilih harus **benar-benar tertutup total** saat download (file cookies dikunci selama browser terbuka - errornya `Could not copy ... cookie database`). Cek Task Manager dan matikan semua proses browser tersebut (Edge/Chrome sering masih jalan di background).
 
-## 📸 Foto Instagram (Fallback Otomatis)
-
-`yt-dlp` yang jadi mesin utama Lumenfetch punya keterbatasan lama: tidak reliable untuk postingan **foto standalone** di Instagram (bukan reel/video) - ini sudah dilaporkan bertahun-tahun di [issue tracker yt-dlp](https://github.com/yt-dlp/yt-dlp/issues) tanpa fix resmi.
-
-Buat nutupin celah ini, Lumenfetch otomatis "banting setir" pakai [`instaloader`](https://instaloader.github.io/) (library Python yang memang didesain khusus buat Instagram) begitu mendeteksi kasus ini - kamu nggak perlu ngapa-ngapain, prosesnya transparan:
-
-- ✅ Reel/video Instagram → tetap lewat `yt-dlp` seperti biasa
-- ✅ Post foto tunggal atau carousel foto → otomatis lewat `instaloader`, muncul opsi format (JPG/PNG/WEBP) dan pilih semua/tertentu seperti biasa
-- ✅ Carousel campuran (foto + video dalam satu post) → foto dan video-nya sama-sama disertakan, bukan cuma foto-nya doang
-- ✅ Fitur **Cookies dari Browser** berlaku juga di jalur `instaloader` ini (butuh package tambahan `browser_cookie3`, sudah otomatis ter-install lewat `requirements.txt`) - kalau post-nya butuh login (mis. akun private yang sudah kamu follow), aktifkan cookies dan itu beneran kepakai buat foto Instagram juga, bukan cuma buat video lewat `yt-dlp`
-- ⚠️ Post private yang kamu **belum** follow tetap gagal walau cookies aktif - itu Instagram yang sengaja nutup akses, bukan keterbatasan Lumenfetch
-- 🔄 Carousel dengan banyak foto: tiap foto didownload independen. Kalau ada 1-2 foto yang gagal (mis. koneksi putus), yang lain tetap lanjut dan hasilnya dilaporkan apa adanya (mis. "3/5 gambar berhasil"), bukan dianggap gagal total ataupun disamarkan jadi sukses penuh
+> **Alternatif paling reliable (disarankan kalau error cookies terus muncul):** pakai **file cookies** yang works walau browser terbuka:
+> 1. Install extension **"Get cookies.txt LOCALLY"** (Chrome/Edge/Firefox) di browser
+> 2. Buka youtube.com (pastikan sudah login), klik extension → **Export** → simpan mis. `D:\cookies.txt`
+> 3. Di Lumenfetch: `settings` → `[5]` → `[1] Nonaktifkan` → isi path file cookies tadi
+> 4. Atau via CLI: `python main.py <URL> --cookies-file D:\cookies.txt`
 
 ## 📐 Estimasi Ukuran & Waktu Download
 
@@ -209,7 +204,7 @@ Cara kerjanya:
 
 ## 🔔 Auto-check Update yt-dlp
 
-YouTube, TikTok, Instagram, dan platform lain sering ubah sistem mereka - jadi `yt-dlp` juga perlu sering di-update biar tetap kompatibel. Ini bukan "sekali fix, selesai selamanya", tapi proses berkelanjutan (mirip antivirus yang perlu update rutin).
+YouTube sering ubah sistemnya - jadi `yt-dlp` juga perlu sering di-update biar tetap kompatibel. Ini bukan "sekali fix, selesai selamanya", tapi proses berkelanjutan (mirip antivirus yang perlu update rutin).
 
 Buat bantu itu, tiap kali Lumenfetch dibuka, otomatis dicek ke PyPI apakah ada versi `yt-dlp` yang lebih baru dari yang terinstall. Kalau ada, muncul notice kayak gini:
 
@@ -227,7 +222,7 @@ Nama file mengikuti template di `config.json` (default: `%(platform)s_%(title)s_
 
 ```
 YouTube_Lofi-Hip-Hop-Radio_2026.mp4
-Instagram_Post-by-username_2026.jpg
+YouTube_Lofi-Hip-Hop-Radio_2026.mp3
 ```
 
 Preferensi kamu (folder simpan, max retry, auto-paste, naming template, cookies browser, dan riwayat) otomatis tersimpan di config user
@@ -241,19 +236,17 @@ Log detail tersimpan di `lumenfetch.log` sefolder config (pakai `-v/--verbose` u
 2. Pilih `[1] Ganti folder download default`
 3. Ketik path folder yang diinginkan (boleh pakai `~` buat home folder, mis. `~/Documents/Video`, atau path absolut penuh)
 
-> **Catatan:** `config.json` sendiri lokasinya **relatif terhadap folder tempat kamu menjalankan `python main.py`** (bukan folder download-nya, itu udah absolute path secara default). Kalau kamu jalanin Lumenfetch dari folder yang beda-beda, `config.json`-nya bisa "tercecer" di tempat berbeda. Disarankan selalu `cd` ke folder project dulu sebelum `python main.py`.
+> **Catatan:** config tersimpan di folder data user (lihat atas), bukan relatif ke folder project - jadi aman dijalankan dari mana saja.
 
 ## ⚠️ Troubleshooting
 
 | Masalah | Solusi |
 |---------|--------|
-| `ModuleNotFoundError: No module named 'yt_dlp'` / `'rich'` / `'pyperclip'` / `'static_ffmpeg'` | Jalankan ulang `pip install -r requirements.txt` |
-| `HTTP Error 403: Forbidden` (biasanya di YouTube) | Update yt-dlp ke versi terbaru: `pip install --upgrade yt-dlp` |
-| `Sign in to confirm you're not a bot` (YouTube) | Aktifkan fitur **Cookies dari Browser** di atas |
-| `Unexpected response from webpage request` (biasanya di TikTok) | Update yt-dlp ke versi terbaru: `pip install --upgrade yt-dlp` |
-| `❌ Konten ini private / tidak bisa diakses` (terutama Instagram) | Coba aktifkan fitur **Cookies dari Browser** di atas |
-| Foto standalone Instagram (bukan reel) | Otomatis ditangani lewat fallback `instaloader` - tidak perlu tindakan manual, lihat bagian "Instagram" di bawah |
-| `❌ Format tidak tersedia untuk konten ini` | Coba quality/format lain - tidak semua platform punya semua kombinasi |
+| `ModuleNotFoundError: No module named 'yt_dlp'` / `'rich'` / `'curl_cffi'` / `'pyperclip'` / `'static_ffmpeg'` | Jalankan ulang `pip install -r requirements.txt` |
+| `HTTP Error 403: Forbidden` | Update yt-dlp ke versi terbaru: `pip install --upgrade yt-dlp` |
+| `Sign in to confirm you're not a bot` | Aktifkan fitur **Cookies** di atas (browser atau file) |
+| `❌ Konten ini private / tidak bisa diakses` | Video private/age-restricted - aktifkan **Cookies** di atas |
+| `❌ Format tidak tersedia untuk konten ini` | Coba quality lain |
 | `❌ Koneksi internet bermasalah` terus muncul | Cek koneksi, atau naikkan `max_retry` lewat command `settings` |
 | Video berhasil download tapi tidak ada suara | Jarang terjadi karena ffmpeg sudah bundled otomatis, tapi kalau muncul, jalankan ulang aplikasinya (ffmpeg diunduh ulang otomatis kalau file sebelumnya rusak) |
 | Ganti naming template di `settings` ditolak | Template cuma boleh pakai `%(platform)s`, `%(title)s`, `%(year)s` - ditolak otomatis kalau ada placeholder salah ketik, biar tidak bikin nama file error saat download |
@@ -261,7 +254,6 @@ Log detail tersimpan di `lumenfetch.log` sefolder config (pakai `-v/--verbose` u
 | Batch download | Buat file teks (satu URL per baris, `#` = komentar), lalu `python main.py --batch daftar.txt --jobs 2` |
 | Resume download | Didukung via `continuedl` yt-dlp + retry backoff eksponensial (2s, 4s, 8s... max 30s). File parsial `.part` dilanjutkan, bukan diulang dari 0 |
 | `ffmpeg tidak ditemukan` | Install ffmpeg sistem dulu (lebih ringan), fallback bundled otomatis. Cek dengan `ffmpeg -version` |
-| Video format WEBM tidak ada thumbnail ter-embed | Ini memang keterbatasan yt-dlp - thumbnail embedding cuma didukung untuk MP4/MKV, bukan bug. File video WEBM-nya sendiri tetap utuh dan lengkap, cuma tanpa thumbnail |
 
 ## 🗂️ Struktur Project
 
@@ -269,25 +261,23 @@ Log detail tersimpan di `lumenfetch.log` sefolder config (pakai `-v/--verbose` u
 lumenfetch/
 ├── main.py                    # Entry point, CLI args, batch, loop utama
 ├── core/
-│   ├── constants.py           # Single source of truth (versi, daftar format, batas)
+│   ├── constants.py           # Single source of truth (versi, format, batas)
 │   ├── errors.py              # Taxonomy error terpusat (klasifikasi + pesan ramah)
 │   ├── ffmpeg.py              # Deteksi ffmpeg sistem dulu, bundled fallback
 │   ├── log.py                 # Logging file terpusat
-│   ├── downloader.py          # Logic download (yt-dlp API) + resume + retry backoff
-│   ├── detector.py            # Deteksi platform & tipe konten
+│   ├── downloader.py          # Download MP4 / ekstrak MP3 + resume + retry backoff
+│   ├── detector.py            # Deteksi info video YouTube
 │   ├── options.py             # Menu & prompt interaktif (rich)
-│   ├── instagram_fallback.py  # Fallback foto Instagram pakai instaloader
 │   ├── update_checker.py      # Auto-check versi terbaru yt-dlp di PyPI
-│   └── utils.py               # Sanitasi nama file, format size, config.json
+│   └── utils.py               # Sanitasi nama file, format size, config user
 ├── tests/
 │   ├── conftest.py            # Fixture global (no-sleep) + SAMPLE_VIDEO_FORMATS
 │   ├── test_utils.py
 │   ├── test_detector.py
 │   ├── test_downloader.py
-│   ├── test_instagram.py
 │   ├── test_options.py
 │   ├── test_main.py
-│   └── test_features.py       # Fitur baru (CLI, backoff, batch, ffmpeg, log)
+│   └── test_features.py       # Fitur (CLI, backoff, batch, ffmpeg, cookies, log)
 ├── .github/
 │   └── workflows/
 │       └── tests.yml          # CI: test & lint otomatis
@@ -303,22 +293,23 @@ lumenfetch/
 **Prinsip pemisahan modul:**
 - `constants.py` - nilai shared (versi, format, batas) biar tidak drift antar modul
 - `errors.py` - klasifikasi error terpusat, dipakai detector & downloader bersama
-- `detector.py` - murni deteksi info konten, tidak mendownload apa pun
-- `downloader.py` - murni proses download & progress, tidak menampilkan menu
+- `detector.py` - murni deteksi info video YouTube, tidak mendownload apa pun
+- `downloader.py` - murni proses download MP4/MP3 & progress, tidak menampilkan menu
 - `options.py` - semua interaksi & tampilan menu, tidak ada logic download
 - `utils.py` - helper murni (sanitasi, format, baca/tulis config), tidak tahu soal CLI atau jaringan
-- `main.py` - menyatukan semuanya lewat satu loop utama
+- `main.py` - menyatukan semuanya lewat CLI + loop utama
 
 ## 🗺️ Roadmap
 
-- [x] **Phase 1 - Core**: struktur project, integrasi yt-dlp dasar, progress bar, config.json
-- [x] **Phase 2 - Smart Detection**: auto-detect tipe konten, auto-paste clipboard, preview nama file
-- [x] **Phase 3 - Reliability & Multi-platform**: retry otomatis, carousel gambar, cancel graceful
-- [x] **Phase 4 - Polish**: menu history, settings, help, naming template kustom
+- [x] **Phase 1 - Core**: struktur project, integrasi yt-dlp dasar, progress bar, config user
+- [x] **Phase 2 - Smart Detection**: auto-detect video YouTube, auto-paste clipboard, preview nama file
+- [x] **Phase 3 - Reliability**: resume, retry backoff eksponensial, playlist, cancel graceful
+- [x] **Phase 4 - Polish**: menu history, settings, help, naming template, subtitle & metadata
+- [x] **Phase 5 - Fokus YouTube**: scope MP4/MP3 saja (v2.0.0) - hapus jalur multi-platform & dep berat
 
 ## 🧪 Testing
 
-Ada unit test untuk fungsi-fungsi inti (sanitasi nama file, naming template, resolve duplikat, format ukuran/durasi, config, validasi URL, dll).
+Ada unit test per modul (sanitasi nama file, naming template, resolve duplikat, format ukuran/durasi, config, validasi URL YouTube, opts yt-dlp, CLI, dll).
 
 ```bash
 pip install -r requirements-dev.txt
