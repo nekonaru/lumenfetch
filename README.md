@@ -10,6 +10,7 @@
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)
 ![Status](https://img.shields.io/badge/Status-Active-brightgreen?style=flat-square)
 ![Tests](https://github.com/nekonaru/lumenfetch/actions/workflows/tests.yml/badge.svg)
+![PyPI](https://img.shields.io/pypi/v/lumenfetch?style=flat-square&logo=pypi&logoColor=white)
 
 </div>
 
@@ -86,7 +87,13 @@ python3 --version
 
 ## 🚀 Instalasi
 
-**1. Ambil kode project ini**
+**Cara cepat (dari PyPI):**
+```bash
+pip install lumenfetch
+lumenfetch
+```
+
+**Dari source (untuk development):**
 
 <details>
 <summary><b>Punya Git terinstall</b></summary>
