@@ -347,6 +347,7 @@ Ganti kapan saja lewat command `settings` (`[1]`), path absolut maupun `~` sama-
 | Batch download | Buat file teks (satu URL per baris, `#` = komentar), lalu `lumenfetch --batch daftar.txt --jobs 2` |
 | Resume download | Didukung via `continuedl` yt-dlp + retry backoff eksponensial (2s, 4s, 8s... max 30s). File parsial `.part` dilanjutkan, bukan diulang dari 0 |
 | `ffmpeg tidak ditemukan` | Install ffmpeg sistem dulu (lebih ringan), fallback bundled otomatis. Cek dengan `ffmpeg -version` |
+| `❌ YouTube butuh JavaScript runtime` | Install Deno (`winget install DenoLand.Deno`) atau Node.js - dibutuhkan untuk signature challenge YouTube |
 
 ## 📝 Catatan Penting
 

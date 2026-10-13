@@ -238,22 +238,96 @@ def download(
                         console.print(t("dl.retry", a=attempt, m=max_retry, d=delay))
                         time.sleep(delay)
                         continue
+                    if kind == "format" and attempt < max_retry:
+                        # SABR-only sessions come and go per request: a fresh
+                        # extraction may get full formats again. Same backoff.
+                        attempt += 1
+                        delay = backoff_delay(attempt)
+                        console.print(t("dl.retry", a=attempt, m=max_retry, d=delay))
+                        time.sleep(delay)
+                        continue
                     raise DownloadFailed(_friendly_message(kind)) from e
                 except Exception as e:  # noqa: BLE001
                     raise DownloadFailed(_friendly_message(_classify_error(e))) from e
-    except (DownloadCancelled, DownloadFailed):
-        _release_placeholder(dest, reserved)
+    except (DownloadCancelled, DownloadFailed) as e:
+        if isinstance(e, DownloadFailed):
+            salvaged = _salvage_media(dest, playlist_all)
+            if salvaged is not None:
+                path, size, count = salvaged
+                console.print(f"[yellow]{t('dl.pp_warning')}[/yellow]")
+                _cleanup_failed_dest(dest, reserved, playlist_all, keep={path})
+                return DownloadResult(
+                    filepath=path,
+                    size_bytes=size,
+                    elapsed_seconds=time.time() - start_time,
+                    file_count=count,
+                )
+        _cleanup_failed_dest(dest, reserved, playlist_all)
         raise
 
     elapsed = time.time() - start_time
     final_path, total_size, file_count = _resolve_final_path(dest, multi_item=playlist_all)
-    if file_count == 0:
-        _release_placeholder(dest, reserved)
+    if total_size == 0:
+        # yt-dlp reported success but left nothing (or an empty file):
+        # expired stream URLs typically end like this. Never report these
+        # as success, and don't leave 0-byte litter behind.
+        _cleanup_failed_dest(dest, reserved, playlist_all)
+        raise DownloadFailed(t("dl.empty_result"))
 
     if choice.output_kind == "audio" and playlist_all and file_count > 1:
         _write_m3u_playlist(dest)
 
     return DownloadResult(filepath=final_path, size_bytes=total_size, elapsed_seconds=elapsed, file_count=file_count)
+
+
+_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+
+
+def _salvage_media(dest: Path, multi_item: bool = False) -> tuple[Path, int, int] | None:
+    """Return (path, size, count) if a NON-EMPTY media file exists despite the failure.
+
+    Post-processing (e.g. thumbnail embed) must never nuke an otherwise good
+    download: a failed PP step on top of an intact video still counts.
+    """
+    matches = _find_result_files(dest, multi_item=multi_item)
+    good = [p for p in matches if p.exists() and p.suffix.lower() not in _IMAGE_EXTS]
+    good = [p for p in good if _safe_size(p) > 0]
+    if not good:
+        return None
+    total = sum(_safe_size(p) for p in good)
+    return good[0], total, len(good)
+
+
+def _safe_size(p: Path) -> int:
+    try:
+        return p.stat().st_size
+    except OSError:
+        return 0
+
+
+def _cleanup_failed_dest(dest: Path, reserved: bool, multi_item: bool = False, keep: frozenset | set = frozenset()) -> None:
+    """Remove our placeholder, 0-byte results, and thumbnail leftovers of a failed download.
+
+    Never touches non-empty media files outside `keep`... in fact never
+    touches non-empty media at all: only our own empty placeholder, 0-byte
+    stem files, and stem thumbnail litter from crashed runs.
+    """
+    _release_placeholder(dest, reserved)
+    try:
+        if multi_item:
+            candidates = find_indexed_files(dest)
+        else:
+            candidates = [p for p in _iter_dir_files(dest.parent) if p.is_file() and p.stem == dest.stem]
+        for p in candidates:
+            if p in keep:
+                continue
+            try:
+                if p.suffix.lower() in _IMAGE_EXTS or _safe_size(p) == 0:
+                    p.unlink()
+            except OSError:
+                pass
+    except OSError:
+        pass
 
 
 def _write_m3u_playlist(dest: Path) -> Path | None:
@@ -331,8 +405,11 @@ def _build_ydl_opts(
         "fragment_retries": 3,
         "continuedl": True,  # resume partial files (.part)
         "skip_unavailable_fragments": False,
+        # Same as detector._base_ydl_opts: a JS runtime is needed for signature challenges.
+        "js_runtimes": {"node": {}, "deno": {}, "bun": {}, "quickjs": {}},
         "noplaylist": not playlist_all,
-        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+        # No forced player_client (see detector._base_ydl_opts): yt-dlp
+        # defaults survive YouTube's SABR-only sessions much better.
     }
 
     if force_single_item:

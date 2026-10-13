@@ -104,7 +104,14 @@ def _base_ydl_opts() -> dict:
         # Redirect raw yt-dlp noise (ERROR:/WARNING: lines) to the log file;
         # the terminal only shows friendly messages via rich.
         "logger": get_ydl_logger(),
-        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+        # NOTE: do NOT force player_client here. An old override
+        # (["android", "web"]) dodged "Sign in to confirm you're not a bot"
+        # but now triggers YouTube's SABR-only experiment: only 1 progressive
+        # format served instead of ~46, so quality selection fails.
+        # yt-dlp's maintained defaults handle clients + fallbacks better.
+        # Signature challenges still need a JS runtime (deno is yt-dlp's
+        # default; also allow node/bun/quickjs if already installed).
+        "js_runtimes": {"node": {}, "deno": {}, "bun": {}, "quickjs": {}},
     }
 
 

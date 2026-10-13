@@ -153,6 +153,7 @@ def test_download_forces_single_item_for_pure_playlist_video(tmp_path, monkeypat
     class FakeYDL:
         def __init__(self, opts):
             captured_opts.update(opts)
+            self.opts = opts
 
         def __enter__(self):
             return self
@@ -161,7 +162,10 @@ def test_download_forces_single_item_for_pure_playlist_video(tmp_path, monkeypat
             return False
 
         def download(self, urls):
-            (tmp_path / "Judul-Playlist_2026.mp4").write_bytes(b"video pertama doang")
+            from pathlib import Path as _P
+
+            base = self.opts["outtmpl"].rsplit(".", 1)[0]
+            _P(f"{base}.mp4").write_bytes(b"video pertama doang")
 
     monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", FakeYDL)
 
@@ -212,7 +216,6 @@ def test_download_playlist_all_finds_indexed_files(tmp_path, monkeypatch):
 
 def test_download_retries_connection_with_backoff(tmp_path, monkeypatch):
     attempts = []
-
     class FakeYDL:
         def __init__(self, opts):
             self.opts = opts
@@ -264,7 +267,10 @@ def test_download_retries_without_cookies_when_cookie_copy_fails(tmp_path, monke
             calls.append("cookiesfrombrowser" in self.opts)
             if "cookiesfrombrowser" in self.opts:
                 raise downloader.yt_dlp.utils.DownloadError("Could not copy Chrome cookie database")
-            (tmp_path / "Judul_2026.mp4").write_bytes(b"x")
+            from pathlib import Path as _P
+
+            base = self.opts["outtmpl"].rsplit(".", 1)[0]
+            _P(f"{base}.mp4").write_bytes(b"x")
 
     monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", FakeYDL)
 
@@ -431,3 +437,124 @@ def test_failed_download_cleans_own_placeholder(tmp_path, monkeypatch):
 
     leftovers = [p for p in tmp_path.iterdir() if p.is_file()]
     assert leftovers == []
+
+
+def test_empty_result_is_failure_not_success(tmp_path, monkeypatch):
+    """yt-dlp success with a 0-byte file (expired stream URLs) must fail loudly."""
+
+    class FakeYDL:
+        def __init__(self, opts):
+            self.opts = opts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def download(self, urls):
+            base = self.opts["outtmpl"].rsplit(".", 1)[0]
+            from pathlib import Path as _P
+
+            _P(f"{base}.mp4").write_bytes(b"")  # 0 bytes, like expired-URL runs
+
+    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", FakeYDL)
+
+    class FakeContent:
+        url = "https://www.youtube.com/watch?v=abc"
+        platform = "YouTube"
+        title = "Judul Kosong"
+        entries = []
+
+    choice = DownloadChoice(output_kind="video", quality="Best", fmt="mp4")
+    with pytest.raises(downloader.DownloadFailed):
+        downloader.download(FakeContent(), choice, tmp_path, "%(title)s")
+
+    assert [p for p in tmp_path.iterdir() if p.is_file()] == []
+
+
+def test_postprocessor_crash_salvages_good_video(tmp_path, monkeypatch, capsys):
+    """EmbedThumbnail-style crash on top of an intact video still counts as success."""
+
+    class FakeYDL:
+        def __init__(self, opts):
+            self.opts = opts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def download(self, urls):
+            base = self.opts["outtmpl"].rsplit(".", 1)[0]
+            from pathlib import Path as _P
+
+            _P(f"{base}.mp4").write_bytes(b"good-video-bytes")
+            _P(f"{base}.png").write_bytes(b"thumbnail-litter")
+            raise downloader.yt_dlp.utils.DownloadError("EmbedThumbnailPP: KeyError streams")
+
+    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", FakeYDL)
+
+    class FakeContent:
+        url = "https://www.youtube.com/watch?v=abc"
+        platform = "YouTube"
+        title = "Judul Bagus"
+        entries = []
+
+    choice = DownloadChoice(output_kind="video", quality="Best", fmt="mp4")
+    result = downloader.download(FakeContent(), choice, tmp_path, "%(title)s")
+
+    assert result.file_count == 1
+    assert result.size_bytes == len(b"good-video-bytes")
+    assert result.filepath.exists()
+    # thumbnail litter cleaned, video kept
+    assert not list(tmp_path.glob("*.png"))
+
+
+def test_no_forced_player_client(tmp_path):
+    from core import detector
+    from core.options import DownloadChoice as _DC
+
+    assert "extractor_args" not in detector._base_ydl_opts()
+    choice = _DC(output_kind="video", quality="Best", fmt="mp4")
+    assert "extractor_args" not in downloader._build_ydl_opts(choice, tmp_path / "v.mp4")
+
+
+def test_download_retries_transient_format_errors(tmp_path, monkeypatch):
+    """SABR-only sessions are transient: a fresh extraction may get full formats."""
+    attempts = []
+
+    class FakeYDL:
+        def __init__(self, opts):
+            self.opts = opts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def download(self, urls):
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise downloader.yt_dlp.utils.DownloadError("Requested format is not available")
+            base = self.opts["outtmpl"].rsplit(".", 1)[0]
+            from pathlib import Path as _P
+
+            _P(f"{base}.mp4").write_bytes(b"recovered")
+
+    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", FakeYDL)
+
+    class FakeContent:
+        url = "https://www.youtube.com/watch?v=abc"
+        platform = "YouTube"
+        title = "Judul"
+        entries = []
+
+    choice = DownloadChoice(output_kind="video", quality="Best", fmt="mp4")
+    result = downloader.download(FakeContent(), choice, tmp_path, "%(title)s", max_retry=2)
+
+    assert len(attempts) == 2
+    assert result.file_count == 1
+    assert result.size_bytes == len(b"recovered")

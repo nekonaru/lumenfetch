@@ -126,7 +126,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "eta.hour": "~{n} hours",
         "err.connection": "❌ Connection trouble, try again",
         "err.private": "❌ This content is private / unavailable - try enabling Browser Cookies in settings",
-        "err.format": "❌ Format not available for this content",
+        "err.format": "❌ No matching format available right now - please retry",
         "err.disk": "❌ Not enough disk space",
         "err.rate_limit": "❌ Too many requests to this platform - wait a bit then retry",
         "err.removed": "❌ This content was deleted / is no longer available",
@@ -140,10 +140,16 @@ STRINGS: dict[str, dict[str, str]] = {
             "❌ Failed to read browser cookies - close the browser completely "
             "(check Task Manager), then try again"
         ),
+        "err.jsruntime": (
+            "❌ YouTube needs a JavaScript runtime (Deno or Node.js) - install one, "
+            "e.g. winget install DenoLand.Deno, then retry"
+        ),
         "err.unknown": "❌ Download error occurred",
         "err.unknown_detect": "Not a valid YouTube URL or unsupported",
         "dl.cookie_retry": "continuing without cookies...",
         "dl.retry": "🔄 Retry {a}/{m} in {d:.0f}s...",
+        "dl.pp_warning": "⚠️ Post-processing failed (e.g. thumbnail embed) - but the video file itself is fine and kept.",
+        "dl.empty_result": "❌ Download produced no data (stream links may have expired) - please retry",
         "doctor.title": "🩺 Lumenfetch Doctor",
         "doctor.col_check": "Check",
         "doctor.col_result": "Result",
@@ -155,6 +161,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "doctor.ffmpeg_bundled": "bundled (static-ffmpeg)",
         "doctor.ffmpeg_hint": "Install system ffmpeg or pip install static-ffmpeg",
         "doctor.curl": "curl_cffi (bot-check bypass)",
+        "doctor.js": "JS runtime (Deno/Node for challenges)",
+        "doctor.js_hint": "install Deno (winget install DenoLand.Deno) or Node.js",
         "doctor.installed": "installed",
         "doctor.missing": "missing",
         "doctor.curl_hint": "pip install curl_cffi",
@@ -288,7 +296,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "eta.hour": "~{n} jam",
         "err.connection": "❌ Koneksi internet bermasalah, coba lagi",
         "err.private": "❌ Konten ini private / tidak bisa diakses - coba aktifkan Cookies dari Browser di settings",
-        "err.format": "❌ Format tidak tersedia untuk konten ini",
+        "err.format": "❌ Format tidak tersedia saat ini - coba lagi",
         "err.disk": "❌ Tidak cukup ruang disk",
         "err.rate_limit": "❌ Terlalu banyak request ke platform ini - tunggu sebentar lalu coba lagi",
         "err.removed": "❌ Konten ini sudah dihapus / tidak lagi tersedia",
@@ -302,10 +310,16 @@ STRINGS: dict[str, dict[str, str]] = {
             "❌ Gagal membaca cookies dari browser - tutup browser-nya sampai "
             "benar-benar tertutup (cek Task Manager), lalu coba lagi"
         ),
+        "err.jsruntime": (
+            "❌ YouTube butuh JavaScript runtime (Deno atau Node.js) - install salah satu, "
+            "mis. winget install DenoLand.Deno, lalu coba lagi"
+        ),
         "err.unknown": "❌ Terjadi kesalahan saat download",
         "err.unknown_detect": "URL bukan link YouTube yang valid atau tidak didukung",
         "dl.cookie_retry": "lanjut tanpa cookies...",
         "dl.retry": "🔄 Retry {a}/{m} dalam {d:.0f}s...",
+        "dl.pp_warning": "⚠️ Post-processing gagal (mis. embed thumbnail) - tapi file videonya utuh dan disimpan.",
+        "dl.empty_result": "❌ Download tidak menghasilkan data (link stream mungkin kedaluwarsa) - coba lagi",
         "doctor.title": "🩺 Lumenfetch Doctor",
         "doctor.col_check": "Cek",
         "doctor.col_result": "Hasil",
@@ -317,6 +331,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "doctor.ffmpeg_bundled": "bundled (static-ffmpeg)",
         "doctor.ffmpeg_hint": "Install ffmpeg sistem atau pip install static-ffmpeg",
         "doctor.curl": "curl_cffi (lolos bot-check)",
+        "doctor.js": "JS runtime (Deno/Node untuk challenge)",
+        "doctor.js_hint": "install Deno (winget install DenoLand.Deno) atau Node.js",
         "doctor.installed": "terinstall",
         "doctor.missing": "hilang",
         "doctor.curl_hint": "pip install curl_cffi",

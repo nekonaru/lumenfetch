@@ -34,6 +34,7 @@ ERROR_KIND_REMOVED = "removed"
 ERROR_KIND_UNSUPPORTED = "unsupported"
 ERROR_KIND_BLOCKED = "blocked"
 ERROR_KIND_COOKIES = "cookies"
+ERROR_KIND_JSRUNTIME = "jsruntime"
 ERROR_KIND_UNKNOWN = "unknown"
 
 _KIND_TO_KEY = {
@@ -46,6 +47,7 @@ _KIND_TO_KEY = {
     ERROR_KIND_UNSUPPORTED: "err.unsupported",
     ERROR_KIND_BLOCKED: "err.blocked",
     ERROR_KIND_COOKIES: "err.cookies",
+    ERROR_KIND_JSRUNTIME: "err.jsruntime",
     ERROR_KIND_UNKNOWN: "err.unknown",
 }
 
@@ -63,6 +65,10 @@ def classify_error(exc: Exception) -> str:
         # Encrypted cookies cannot be decrypted (yt-dlp #10927, common on
         # Edge/Chrome for Windows) - likewise: not a broken URL, fall back without cookies.
         return ERROR_KIND_COOKIES
+    if "javascript runtime" in msg or "js runtime" in msg:
+        # Modern yt-dlp needs Deno/Node/Bun to solve YouTube signature
+        # challenges - without one, videos fail as "unavailable".
+        return ERROR_KIND_JSRUNTIME
     if "unexpected response from webpage request" in msg or "confirm you are on the latest version" in msg:
         # Bot-check challenge that only passes with impersonation + cookies,
         # not a broken URL.

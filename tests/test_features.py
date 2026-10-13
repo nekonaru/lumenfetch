@@ -198,6 +198,36 @@ def test_classify_dpapi_failure_as_cookies():
     assert classify_error(Exception("failed to load cookies")) == ERROR_KIND_COOKIES
 
 
+def test_classify_missing_js_runtime():
+    from core.errors import ERROR_KIND_JSRUNTIME, classify_error, friendly_message
+
+    err = Exception("No supported JavaScript runtime could be found. Only deno is enabled by default")
+    assert classify_error(err) == ERROR_KIND_JSRUNTIME
+    assert "deno" in friendly_message(ERROR_KIND_JSRUNTIME).lower()
+
+
+def test_doctor_js_runtime_check(monkeypatch):
+    import shutil
+
+    from core import doctor
+
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/node" if name == "node" else None)
+    check = doctor._check_js_runtime()
+    assert check.ok is True
+    assert check.detail == "node"
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    assert doctor._check_js_runtime().ok is False
+
+
+def test_build_opts_enable_js_runtimes(tmp_path):
+    from core import downloader
+    from core.options import DownloadChoice
+
+    choice = DownloadChoice(output_kind="video", quality="Best", fmt="mp4")
+    opts = downloader._build_ydl_opts(choice, tmp_path / "v.mp4")
+    assert "node" in opts["js_runtimes"]
+
+
 def test_resolve_cookie_file(tmp_path):
     assert utils.resolve_cookie_file(None) is None
     assert utils.resolve_cookie_file("") is None
@@ -327,7 +357,7 @@ def test_doctor_all_checks_structure():
 
     checks = doctor.run_all({})
     names = [c.name for c in checks]
-    assert len(checks) == 8
+    assert len(checks) == 9
     assert all(isinstance(c.ok, bool) for c in checks)
     assert any("ffmpeg" in n.lower() for n in names)
 

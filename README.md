@@ -343,6 +343,7 @@ Change it anytime via the `settings` command (`[1]`), absolute paths and `~` are
 | Naming template rejected in `settings` | Only `%(platform)s`, `%(title)s`, `%(year)s` are allowed - rejected automatically on typos so filenames never break |
 | `⚠️ Playlist with N videos` | Only the first video by default. Use `--playlist all` for all of them as indexed files |
 | `ffmpeg not found` | Install system ffmpeg first (lighter), bundled fallback is automatic. Check with `ffmpeg -version` |
+| `❌ YouTube needs a JavaScript runtime` | Install Deno (`winget install DenoLand.Deno`) or Node.js - required to solve YouTube signature challenges |
 
 ## 📝 Important Notes
 

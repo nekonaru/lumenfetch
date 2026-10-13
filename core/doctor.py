@@ -26,6 +26,7 @@ def run_all(config: dict | None = None) -> list[DoctorCheck]:
     checks: list[DoctorCheck] = [
         _check_python(),
         _check_ffmpeg(),
+        _check_js_runtime(),
         _check_curl_cffi(),
         _check_yt_dlp(),
         _check_self(),
@@ -59,6 +60,16 @@ def _check_ffmpeg() -> DoctorCheck:
         return DoctorCheck(name=t("doctor.ffmpeg"), ok=True, detail=t("doctor.ffmpeg_bundled"))
     except ImportError:
         return DoctorCheck(name=t("doctor.ffmpeg"), ok=False, detail="-", hint=t("doctor.ffmpeg_hint"))
+
+
+def _check_js_runtime() -> DoctorCheck:
+    """At least one JS runtime (Deno/Node/Bun) must exist for YouTube challenges."""
+    import shutil
+
+    found = next((r for r in ("deno", "node", "bun", "quickjs") if shutil.which(r)), None)
+    if found:
+        return DoctorCheck(name=t("doctor.js"), ok=True, detail=found)
+    return DoctorCheck(name=t("doctor.js"), ok=False, detail="-", hint=t("doctor.js_hint"))
 
 
 def _check_curl_cffi() -> DoctorCheck:
