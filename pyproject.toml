@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "lumenfetch"
 version = "2.0.0"
@@ -5,6 +9,22 @@ description = "YouTube downloader buat terminal - MP4 & MP3."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
+authors = [{ name = "Nicolas Dwi Dharma" }]
+keywords = ["youtube", "downloader", "mp4", "mp3", "yt-dlp", "cli"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Utilities",
+]
 dependencies = [
     "yt-dlp",
     "rich",
@@ -25,6 +45,10 @@ dev = ["pytest", "ruff", "pyinstaller"]
 
 [project.urls]
 Homepage = "https://github.com/nekonaru/lumenfetch"
+
+[tool.hatch.build]
+# main.py modul top-level: ikutkan ke wheel agar console script jalan.
+force-include = { "main.py" = "main.py" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["core"]
