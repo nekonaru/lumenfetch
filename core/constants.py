@@ -1,8 +1,8 @@
-"""constants.py - Single source of truth untuk nilai-nilai shared."""
+"""constants.py - Single source of truth for shared values."""
 
 from __future__ import annotations
 
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 
 # --- Config ---
 HISTORY_LIMIT = 20
@@ -12,7 +12,7 @@ DOWNLOAD_TIMEOUT_SECONDS = 30
 FFMPEG_TIMEOUT_SECONDS = 120
 APP_NAME = "lumenfetch"
 
-# --- Retry (backoff eksponensial) ---
+# --- Retry (exponential backoff) ---
 RETRY_BASE_DELAY_SECONDS = 2.0
 RETRY_MAX_DELAY_SECONDS = 30.0
 RETRY_JITTER_SECONDS = 1.0
@@ -36,7 +36,7 @@ VIDEO_FORMAT = "mp4"
 AUDIO_FORMAT = "mp3"
 AUDIO_QUALITIES = ["Best", "320kbps", "192kbps", "128kbps"]
 
-# Container video yang didukung EmbedThumbnailPP milik yt-dlp.
+# Video containers supported by yt-dlp's EmbedThumbnailPP.
 EMBEDDABLE_VIDEO_FORMATS = frozenset({"mp4"})
 
 # --- Download ---
@@ -49,7 +49,7 @@ CONNECTION_ERROR_HINTS = (
     "reset by peer",
 )
 
-# Batas tinggi per label quality (None = tanpa batas / ambil terbaik).
+# Height limit per quality label (None = unlimited / take best).
 HEIGHT_LIMITS = {
     "1080p": 1080,
     "720p": 720,
@@ -57,20 +57,20 @@ HEIGHT_LIMITS = {
     "360p": 360,
 }
 
-# Target bitrate (kbps) untuk opsi audio lossy.
+# Target bitrate (kbps) for lossy audio options.
 AUDIO_TARGET_KBPS = {
     "320kbps": 320,
     "192kbps": 192,
     "128kbps": 128,
 }
 
-# Browser yang didukung yt-dlp untuk cookiesfrombrowser.
+# Browsers supported by yt-dlp for cookiesfrombrowser.
 SUPPORTED_COOKIE_BROWSERS = ["none", "chrome", "firefox", "edge", "brave", "opera", "vivaldi", "safari"]
 
 # --- Filenames ---
 ILLEGAL_CHARS = r'[\\/:*?"<>|]'
 MAX_TITLE_LEN = 80
-# Nama reserved Windows (case-insensitive) yang tidak boleh jadi nama file.
+# Windows reserved names (case-insensitive) that must not be used as file names.
 WINDOWS_RESERVED_NAMES = frozenset(
     {
         "CON",

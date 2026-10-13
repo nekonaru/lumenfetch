@@ -1,7 +1,7 @@
 """
 options.py
-Semua prompt/menu interaktif (pilih output, quality, dll) memakai Rich.
-Tidak ada logic download di sini. Bahasa mengikuti core.i18n (default English).
+All interactive prompts/menus (output choice, quality, etc.) use Rich.
+No download logic here. Language follows core.i18n (default English).
 """
 
 from __future__ import annotations
@@ -40,12 +40,14 @@ __all__ = [
 class DownloadChoice:
     output_kind: str  # "video" | "audio"
     quality: str = "Best"
-    fmt: str = ""  # "mp4" untuk video, "mp3" untuk audio
+    fmt: str = ""  # "mp4" for video, "mp3" for audio
     playlist_mode: str = "single"  # "single" | "all"
     write_subs: bool = False
     sub_langs: list[str] | None = None
     embed_subs: bool = False
     embed_metadata: bool = False
+    sponsorblock: list[str] | None = None  # e.g. ["sponsor", "intro", "outro"]
+    write_info_json: bool = False
 
 
 def show_header(version: str = VERSION) -> None:
@@ -63,6 +65,16 @@ def show_update_notice(installed_version: str, latest_version: str) -> None:
             t("update.body", installed=installed_version, latest=latest_version),
             title=t("update.title"),
             border_style="yellow",
+        )
+    )
+
+
+def show_self_update_notice(installed_version: str, latest_version: str) -> None:
+    console.print(
+        Panel(
+            t("selfupdate.body", installed=installed_version, latest=latest_version),
+            title=t("selfupdate.title"),
+            border_style="green",
         )
     )
 
@@ -157,7 +169,7 @@ def ask_audio_choice(content: DetectedContent | None = None, avg_speed_bps: floa
 
 
 def ask_playlist_mode(total: int) -> str:
-    """Tanya mode playlist: 1 video pertama (default) atau semua."""
+    """Ask for playlist mode: first video only (default) or all."""
     console.print(t("pl.prompt", total=total))
     console.print(f"  [1] {t('pl.single')}")
     console.print(f"  [2] {t('pl.all', total=total)}")
@@ -166,7 +178,7 @@ def ask_playlist_mode(total: int) -> str:
 
 
 def ask_subtitle_options() -> tuple[bool, list[str] | None, bool]:
-    """Return (write_subs, sub_langs, embed_subs). Default mati."""
+    """Return (write_subs, sub_langs, embed_subs). Off by default."""
     console.print(t("subs.prompt"))
     console.print(f"  [1] {t('subs.no')}")
     console.print(f"  [2] {t('subs.yes')}")
@@ -184,7 +196,7 @@ def ask_embed_metadata() -> bool:
 
 
 def resolve_choice(content: DetectedContent, avg_speed_bps: float | None = None) -> DownloadChoice:
-    """Alur pilihan dinamis: video YouTube -> tanya output, lalu quality."""
+    """Dynamic choice flow: YouTube video -> ask output, then quality."""
     if content.content_type == "AUDIO":
         return ask_audio_choice(content, avg_speed_bps)
     kind = ask_output_type()
@@ -199,8 +211,8 @@ def confirm_filename(filename: str) -> bool:
 
 
 def ask_again_or_url() -> bool | str:
-    """Prompt lanjutan yang toleran terhadap paste URL langsung."""
-    from core.detector import is_valid_url  # noqa: PLC0415 - hindari circular import
+    """Follow-up prompt that tolerates a directly pasted URL."""
+    from core.detector import is_valid_url  # noqa: PLC0415 - avoid circular import
 
     while True:
         raw = Prompt.ask(t("again.prompt"), default="y").strip()
@@ -261,7 +273,7 @@ def show_settings_menu(config: dict) -> str:
 
 
 def ask_cookies_browser() -> str | None:
-    """Minta user pilih browser buat ambil cookies (konten age-restricted/private)."""
+    """Ask the user to pick a browser for cookies (age-restricted/private content)."""
     console.print(t("cookie.info1"))
     console.print(t("cookie.info2"))
     labels = [t("cookie.disable"), "Chrome", "Firefox", "Edge", "Brave", "Opera", "Vivaldi", "Safari"]

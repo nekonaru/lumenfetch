@@ -1,4 +1,4 @@
-"""ffmpeg.py - Deteksi & penyiapan ffmpeg (sistem dulu, bundled fallback)."""
+"""ffmpeg.py - ffmpeg detection & setup (system first, bundled fallback)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from core.constants import FFMPEG_TIMEOUT_SECONDS
 
 
 def find_system_ffmpeg() -> str | None:
-    """Return path ffmpeg sistem kalau ada di PATH, else None."""
+    """Return the system ffmpeg path if found on PATH, else None."""
     return shutil.which("ffmpeg")
 
 
@@ -18,16 +18,16 @@ def is_available() -> bool:
 
 
 def exe() -> str:
-    """Nama/path executable ffmpeg yang dipakai yt-dlp (merge MP4 / ekstrak MP3)."""
+    """Name/path of the ffmpeg executable used by yt-dlp (MP4 merge / MP3 extraction)."""
     return find_system_ffmpeg() or "ffmpeg"
 
 
 def ensure() -> bool:
-    """Pastikan ffmpeg bisa dipanggil.
+    """Ensure ffmpeg can be invoked.
 
-    1. Kalau ffmpeg sistem ada -> langsung True (tanpa download apa pun).
-    2. Kalau tidak ada -> coba static_ffmpeg bundled (lazy import).
-    3. Verifikasi dengan `ffmpeg -version` (cepat, timeout 10s).
+    1. If system ffmpeg exists -> True directly (no downloads at all).
+    2. If missing -> try the bundled static_ffmpeg (lazy import).
+    3. Verify with `ffmpeg -version` (fast, 10s timeout).
     """
     if is_available():
         return _verify(exe())
@@ -57,7 +57,7 @@ def _verify(ffmpeg_exe: str, timeout: int = 10) -> bool:
 
 
 def version() -> str | None:
-    """Versi ffmpeg (baris pertama `ffmpeg -version`), None kalau tak tersedia."""
+    """ffmpeg version (first line of `ffmpeg -version`), None if unavailable."""
     try:
         out = subprocess.run(
             [exe(), "-version"],

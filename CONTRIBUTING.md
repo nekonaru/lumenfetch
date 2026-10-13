@@ -1,68 +1,74 @@
-# Kontribusi ke Lumenfetch
+# Contributing to Lumenfetch
 
-Makasih udah mau bantu kembangin Lumenfetch. Panduan ini biar kontribusi kamu gampang diproses.
+Thanks for helping develop Lumenfetch. This guide keeps contributions easy to review.
 
-## 🛠 Setup Development
+**Bahasa Indonesia** | [English](CONTRIBUTING.md)
 
-1. Fork & clone repo ini
-2. Install dependency (termasuk tools testing & lint):
+> Indonesian version: [`CONTRIBUTING.id.md`](CONTRIBUTING.id.md)
+
+## 🛠 Development Setup
+
+1. Fork & clone this repo
+2. Install dependencies (including testing & lint tools):
    ```bash
    pip install -r requirements-dev.txt
    ```
-3. Pastikan `ffmpeg` sudah terinstall di sistem kamu (lihat bagian Requirements di README)
+3. Make sure `ffmpeg` is installed on your system (see Requirements in the README)
 
-## 🗂 Struktur & Prinsip Modul
+## 🗂 Module Structure & Principles
 
-Lumenfetch sengaja dipisah per tanggung jawab, tolong dijaga konsistensinya kalau nambah/ubah kode:
+Lumenfetch is split by responsibility - please keep it consistent when adding/changing code:
 
-| File | Tanggung jawab | Tidak boleh |
-|------|-----------------|-------------|
-| `core/constants.py` | Nilai shared (versi, format, batas) | Logic bisnis |
-| `core/errors.py` | Klasifikasi error + pesan ramah terpusat | Logic download/deteksi |
-| `core/i18n.py` | Katalog string UI (EN default, ID opsional) | Logic bisnis |
-| `core/ffmpeg.py` | Deteksi ffmpeg sistem dulu, bundled fallback | Download/deteksi |
-| `core/log.py` | Logging file terpusat | Tampilan rich/menu |
-| `core/detector.py` | Deteksi info video YouTube via yt-dlp | Mendownload apa pun |
-| `core/downloader.py` | Proses download, progress hook, retry | Menampilkan menu/prompt |
-| `core/options.py` | Semua interaksi & tampilan menu (rich) | Logic download |
-| `core/utils.py` | Helper murni: sanitasi, format, config.json | Bergantung ke CLI atau jaringan |
-| `main.py` | Menyatukan semua modul lewat satu loop | Logic bisnis baru |
+| File | Responsibility | Must not |
+|------|----------------|----------|
+| `core/constants.py` | Shared values (version, formats, limits) | Business logic |
+| `core/errors.py` | Central error classification + friendly messages | Download/detect logic |
+| `core/i18n.py` | UI string catalog (EN default, ID optional) | Business logic |
+| `core/cli.py` | Argument parsing + non-interactive choice building | Business logic |
+| `core/doctor.py` | Setup diagnosis (ffmpeg, deps, cookies, network) | Download/detect |
+| `core/ffmpeg.py` | System ffmpeg first, bundled fallback | Download/detect |
+| `core/log.py` | Central file logging | Rich display/menus |
+| `core/detector.py` | YouTube video info detection via yt-dlp | Download anything |
+| `core/downloader.py` | Download process, progress hook, retry | Show menus/prompts |
+| `core/options.py` | All interaction & menus (rich) | Download logic |
+| `core/utils.py` | Pure helpers: sanitizing, formatting, user config | Depend on CLI or network |
+| `main.py` | Ties everything together via CLI + main loop | New business logic |
 
-Kalau nambah fitur, coba taruh di modul yang paling sesuai dulu sebelum bikin file baru.
+When adding a feature, put it in the most fitting module first before creating a new file.
 
-## ✅ Sebelum Bikin Pull Request
+## ✅ Before Opening a Pull Request
 
-Jalankan ini dulu di root project:
+Run this in the project root:
 
 ```bash
 pytest tests/ -v
 ruff check .
 ```
 
-Pastikan semua test lulus dan tidak ada warning lint baru. GitHub Actions juga bakal jalanin ini otomatis di setiap PR.
+Make sure all tests pass and there are no new lint warnings. GitHub Actions also runs these automatically on every PR.
 
-## 📝 Commit Message
+## 📝 Commit Messages
 
-Pakai prefix singkat biar history gampang dibaca:
+Use short prefixes so history stays readable:
 
-- `feat:` — fitur baru
-- `fix:` — perbaikan bug
-- `docs:` — perubahan dokumentasi (README, CONTRIBUTING, dll)
-- `refactor:` — perubahan struktur kode tanpa mengubah perilaku
-- `test:` — nambah/ubah test
+- `feat:` — new feature
+- `fix:` — bug fix
+- `docs:` — documentation changes (README, CONTRIBUTING, etc.)
+- `refactor:` — code structure changes without behavior change
+- `test:` — add/change tests
 
-Contoh: `fix: handle carousel gambar dengan 1 gambar saja`
+Example: `fix: handle single-video YouTube playlist`
 
-## 🐛 Lapor Bug / Request Fitur
+## 🐛 Bug Reports / Feature Requests
 
-Buka [Issues](../../issues) baru, sertakan:
-- Platform/link yang bermasalah (kalau ada, hapus info pribadi)
-- Pesan error yang muncul di terminal
-- Langkah buat reproduce masalahnya
+Open a new [Issue](../../issues) and include:
+- The problematic link (if any, remove personal info)
+- The error message shown in the terminal
+- Steps to reproduce the problem
 
-## 🤝 Pull Request
+## 🤝 Pull Requests
 
-1. Buat branch baru dari `main`, kasih nama yang jelas (misal `fix/carousel-single-image`)
-2. Pastikan `pytest` dan `ruff check .` lulus
-3. Jelasin di deskripsi PR apa yang diubah dan kenapa
-4. Tunggu review — mungkin ada request perubahan kecil sebelum di-merge
+1. Create a new branch from `main` with a clear name (e.g. `fix/playlist-single-video`)
+2. Make sure `pytest` and `ruff check .` pass
+3. Explain in the PR description what changed and why
+4. Wait for review - there may be small change requests before merging

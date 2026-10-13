@@ -8,6 +8,7 @@ downloads/*
 !downloads/.gitkeep
 config.json
 *.log
+.coverage
 dist/
 build/
 *.egg-info/

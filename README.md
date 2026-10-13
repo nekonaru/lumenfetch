@@ -31,7 +31,10 @@
 | 🎵 **MP3 audio** | Bitrate Best/320kbps/192kbps/128kbps |
 | 📜 **Playlists** | First video only by default; `--playlist all` for the whole list |
 | 💬 **Subtitles & metadata** | Download subtitles + embed into MP4, optional via flags |
+| 📃 **Auto M3U** | Audio playlists (`--playlist all`) also write an `.m3u` file |
 | 🌍 **English/Indonesian UI** | Display language via `--ui-lang id`, `LUMENFETCH_LANG`, or remembered setting |
+| 🩺 **Doctor** | `lumenfetch --doctor` diagnoses setup (ffmpeg, deps, cookies, network) |
+| ⬆️ **Self-update notice** | Tells you when a newer lumenfetch is on PyPI |
 | 📋 **Clipboard auto-paste** | A valid link in your clipboard is offered right away, never asked twice for the same content |
 | 📊 **Real-time progress** | Speed, size, and ETA via `rich` |
 | 📐 **Size & time estimates** | Shown next to every quality option, computed from yt-dlp data + your own past download speeds |
@@ -276,10 +279,13 @@ lumenfetch "https://youtube.com/watch?v=..." -t video -f mp4 -q 720p -y
 | `--sub-langs` | Subtitle languages, comma-separated (default: en,id) |
 | `--embed-subs` | Embed subtitles into the MP4 file |
 | `--embed-metadata` | Embed metadata (title/artist) into the output file |
+| `--sponsorblock [cats...]` | Skip SponsorBlock segments (e.g. `--sponsorblock sponsor intro outro`) |
+| `--write-info-json` | Save video metadata as `.info.json` next to the file |
 | `--batch` | Text file with URLs (one per line) |
 | `--jobs N` | Batch parallelism 1-4 (default 1) |
 | `--no-clipboard` | Don't offer clipboard content |
 | `--ui-lang {en,id}` | Display language (default `en`, remembered after being set) |
+| `--doctor` | Diagnose setup (ffmpeg, deps, cookies, network) and exit |
 | `-y/--yes` | Skip the filename confirmation |
 | `-v/--verbose` | Detailed logging to file + console |
 | `--history` | Show history and exit |
@@ -360,6 +366,8 @@ lumenfetch/
 │   ├── constants.py           # Single source of truth (version, formats, limits)
 │   ├── errors.py              # Central error taxonomy (classification + friendly messages)
 │   ├── i18n.py                # UI strings (English default, Indonesian via --ui-lang)
+│   ├── cli.py                 # Argument parsing + non-interactive choice building
+│   ├── doctor.py              # Setup diagnosis (ffmpeg, deps, cookies, network)
 │   ├── ffmpeg.py              # System ffmpeg first, bundled fallback
 │   ├── log.py                 # Central file logging
 │   ├── downloader.py          # MP4 download / MP3 extract + resume + retry backoff

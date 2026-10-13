@@ -28,8 +28,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
-      - name: Run tests
-        run: pytest tests/ -v
+      - name: Run tests (coverage gate 80%)
+        run: pytest tests/ -q --cov=core --cov-fail-under=80
 
       - name: Lint with ruff
         run: ruff check .

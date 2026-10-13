@@ -1,11 +1,12 @@
 """
 downloader.py
-Download video YouTube (MP4) / ekstrak audio (MP3) memakai yt-dlp,
-dengan progress hook Rich, resume otomatis, dan retry backoff eksponensial.
+Download YouTube video (MP4) / extract audio (MP3) using yt-dlp,
+with Rich progress hook, automatic resume, and exponential backoff retry.
 """
 
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -36,6 +37,7 @@ from core.errors import (
     classify_error,
     friendly_message,
 )
+from core.i18n import t
 from core.log import get_ydl_logger
 from core.options import DownloadChoice
 from core.utils import (
@@ -60,8 +62,7 @@ console = Console()
 
 CONNECTION_ERROR_HINTS = tuple(__import__("core.constants", fromlist=["CONNECTION_ERROR_HINTS"]).CONNECTION_ERROR_HINTS)
 
-_HEIGHT_FILTERS = {
-    "Best": "",
+_HEIGHT_FILTERS = {    "Best": "",
     "1080p": "[height<=1080]",
     "720p": "[height<=720]",
     "480p": "[height<=480]",
@@ -71,19 +72,23 @@ _HEIGHT_FILTERS = {
 
 _AUDIO_KBPS = {"Best": "0", "320kbps": "320", "192kbps": "192", "128kbps": "128"}
 
+# Lock for duplicate resolution + placeholder reservation, so parallel
+# batch workers downloading the same title don't pick the same filename.
+_resolve_lock = threading.Lock()
+
 
 @dataclass
 class DownloadResult:
     filepath: Path
     size_bytes: int
     elapsed_seconds: float
-    file_count: int = 1  # >1 kalau --playlist all
+    file_count: int = 1  # >1 when --playlist all
 
 
 def _quality_to_format_selector(quality: str, ext: str = "mp4") -> str:
     """
-    Selector video: prioritaskan kombinasi video+audio yang codec-nya sudah
-    kompatibel dengan MP4 (h264+aac) biar ffmpeg tinggal remux tanpa re-encode.
+    Video selector: prioritize video+audio combinations whose codecs are already
+    MP4-compatible (h264+aac) so ffmpeg only needs to remux without re-encoding.
     """
     hf = _HEIGHT_FILTERS.get(quality, "")
 
@@ -120,7 +125,7 @@ def _make_progress_hook(progress: Progress, task_id):
 
 
 def _classify_error(e: Exception) -> str:
-    """Wrapper kompatibel - logika kanonis di core.errors.classify_error."""
+    """Compatible wrapper - canonical logic lives in core.errors.classify_error."""
     return classify_error(e)
 
 
@@ -129,12 +134,41 @@ def _friendly_message(kind: str) -> str:
 
 
 def backoff_delay(attempt: int) -> float:
-    """Delay eksponensial untuk retry ke-`attempt` (1-indexed), dibatasi max + jitter."""
+    """Exponential delay for retry `attempt` (1-indexed), capped at max + jitter."""
     import random
 
     base = RETRY_BASE_DELAY_SECONDS * (2.0 ** max(0, attempt - 1))
     capped = min(base, RETRY_MAX_DELAY_SECONDS)
     return capped + random.uniform(0, RETRY_JITTER_SECONDS)
+
+
+def _reserve_dest(path: Path, multi_item: bool = False) -> tuple[Path, bool]:
+    """Resolve a duplicate-free dest and reserve it with an empty placeholder.
+
+    The lock + placeholder close a race in parallel batch mode where two
+    workers for the same title both resolve to the same filename before
+    either file exists on disk. Returns (dest, reserved): reserved is True
+    only when this call created the placeholder (so only it may clean up).
+    """
+    with _resolve_lock:
+        dest = resolve_duplicate(path, multi_item=multi_item)
+        try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.touch(exist_ok=False)
+            return dest, True
+        except OSError:
+            return dest, False
+
+
+def _release_placeholder(dest: Path, reserved: bool) -> None:
+    """Remove our own reservation placeholder if it is still empty."""
+    if not reserved:
+        return
+    try:
+        if dest.exists() and dest.stat().st_size == 0:
+            dest.unlink()
+    except OSError:
+        pass
 
 
 def download(
@@ -146,7 +180,7 @@ def download(
     cookies_browser: str | None = None,
     cookies_file: str | None = None,
 ) -> DownloadResult:
-    """Download video/audio YouTube sesuai pilihan, retry backoff untuk error koneksi."""
+    """Download YouTube video/audio per the choice, with backoff retry for connection errors."""
     output_folder.mkdir(parents=True, exist_ok=True)
 
     ext = choice.fmt
@@ -154,11 +188,11 @@ def download(
 
     entries_count = len(getattr(content, "entries", None) or [])
     playlist_all = getattr(choice, "playlist_mode", "single") == PLAYLIST_MODE_ALL and entries_count > 1
-    # "noplaylist" tidak berefek untuk URL playlist murni (yt-dlp #5215):
-    # paksa entry pertama bila mode single.
+    # "noplaylist" has no effect for pure playlist URLs (yt-dlp #5215):
+    # force the first entry when in single mode.
     force_single_item = not playlist_all and entries_count > 1
 
-    dest = resolve_duplicate(output_folder / filename, multi_item=playlist_all)
+    dest, reserved = _reserve_dest(output_folder / filename, multi_item=playlist_all)
 
     ydl_opts = _build_ydl_opts(
         choice,
@@ -172,51 +206,74 @@ def download(
     attempt = 0
     start_time = time.time()
 
-    with Progress(
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        DownloadColumn(),
-        TransferSpeedColumn(),
-        TimeRemainingColumn(),
-        console=console,
-    ) as progress:
-        task_id = progress.add_task(f"📥 {content.title[:40]}", total=None)
-        ydl_opts["progress_hooks"] = [_make_progress_hook(progress, task_id)]
+    try:
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            DownloadColumn(),
+            TransferSpeedColumn(),
+            TimeRemainingColumn(),
+            console=console,
+        ) as progress:
+            task_id = progress.add_task(f"📥 {content.title[:40]}", total=None)
+            ydl_opts["progress_hooks"] = [_make_progress_hook(progress, task_id)]
 
-        while True:
-            try:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([content.url])
-                break
-            except KeyboardInterrupt:
-                raise DownloadCancelled("Download dibatalkan oleh user") from None
-            except yt_dlp.utils.DownloadError as e:
-                kind = _classify_error(e)
-                if kind == "cookies" and ("cookiesfrombrowser" in ydl_opts or "cookiefile" in ydl_opts):
-                    ydl_opts.pop("cookiesfrombrowser", None)
-                    ydl_opts.pop("cookiefile", None)
-                    console.print(
-                        "[yellow]⚠️  Cookies browser gagal dibaca (tutup browser-nya) - lanjut tanpa cookies...[/yellow]"
-                    )
-                    continue
-                if kind == "connection" and attempt < max_retry:
-                    attempt += 1
-                    delay = backoff_delay(attempt)
-                    console.print(f"🔄 Retry {attempt}/{max_retry} dalam {delay:.0f}s...")
-                    time.sleep(delay)
-                    continue
-                raise DownloadFailed(_friendly_message(kind)) from e
-            except Exception as e:  # noqa: BLE001
-                raise DownloadFailed(_friendly_message(_classify_error(e))) from e
+            while True:
+                try:
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.download([content.url])
+                    break
+                except KeyboardInterrupt:
+                    raise DownloadCancelled("Download dibatalkan oleh user") from None
+                except yt_dlp.utils.DownloadError as e:
+                    kind = _classify_error(e)
+                    if kind == "cookies" and ("cookiesfrombrowser" in ydl_opts or "cookiefile" in ydl_opts):
+                        ydl_opts.pop("cookiesfrombrowser", None)
+                        ydl_opts.pop("cookiefile", None)
+                        console.print(f"[yellow]{_friendly_message(kind)} - {t('dl.cookie_retry')}[/yellow]")
+                        continue
+                    if kind == "connection" and attempt < max_retry:
+                        attempt += 1
+                        delay = backoff_delay(attempt)
+                        console.print(t("dl.retry", a=attempt, m=max_retry, d=delay))
+                        time.sleep(delay)
+                        continue
+                    raise DownloadFailed(_friendly_message(kind)) from e
+                except Exception as e:  # noqa: BLE001
+                    raise DownloadFailed(_friendly_message(_classify_error(e))) from e
+    except (DownloadCancelled, DownloadFailed):
+        _release_placeholder(dest, reserved)
+        raise
 
     elapsed = time.time() - start_time
     final_path, total_size, file_count = _resolve_final_path(dest, multi_item=playlist_all)
+    if file_count == 0:
+        _release_placeholder(dest, reserved)
+
+    if choice.output_kind == "audio" and playlist_all and file_count > 1:
+        _write_m3u_playlist(dest)
 
     return DownloadResult(filepath=final_path, size_bytes=total_size, elapsed_seconds=elapsed, file_count=file_count)
 
 
+def _write_m3u_playlist(dest: Path) -> Path | None:
+    """Write a `.m3u` playlist next to audio `--playlist all` results. Best effort."""
+    try:
+        tracks = sorted(
+            (p for p in _find_result_files(dest, multi_item=True) if p.suffix.lower() == ".mp3" and p.exists()),
+            key=lambda p: p.name,
+        )
+        if len(tracks) < 2:
+            return None
+        m3u = dest.parent / (dest.stem + ".m3u")
+        m3u.write_text("\n".join(p.name for p in tracks) + "\n", encoding="utf-8")
+        return m3u
+    except OSError:
+        return None
+
+
 def _find_result_files(dest: Path, multi_item: bool = False) -> list[Path]:
-    """Cari file hasil download yang cocok dengan `dest` (aman dari karakter glob di judul)."""
+    """Find downloaded result file(s) matching `dest` (safe against glob chars in titles)."""
     if multi_item:
         return find_indexed_files(dest)
 
@@ -242,7 +299,7 @@ def _find_result_files(dest: Path, multi_item: bool = False) -> list[Path]:
 
 
 def _resolve_final_path(dest: Path, multi_item: bool = False) -> tuple[Path, int, int]:
-    """Return (path_representatif, total_size_bytes, jumlah_file)."""
+    """Return (representative_path, total_size_bytes, file_count)."""
     matches = _find_result_files(dest, multi_item=multi_item)
     if not matches:
         return dest, 0, 0
@@ -261,18 +318,18 @@ def _build_ydl_opts(
     if playlist_all:
         outtmpl = f"{dest.with_suffix('')}-%(playlist_index,autonumber)d"
     else:
-        outtmpl = str(dest.with_suffix(""))  # ekstensi diserahkan ke yt-dlp/postprocessor
+        outtmpl = str(dest.with_suffix(""))  # extension is left to yt-dlp/postprocessor
 
     opts = {
         "outtmpl": outtmpl + ".%(ext)s",
         "quiet": True,
         "no_warnings": True,
         "noprogress": True,
-        # Lihat detector._base_ydl_opts: noise mentah ke file log saja.
+        # See detector._base_ydl_opts: raw noise goes to the log file only.
         "logger": get_ydl_logger(),
-        "retries": 0,  # retry koneksi ditangani manual (backoff) di download()
+        "retries": 0,  # connection retries are handled manually (backoff) in download()
         "fragment_retries": 3,
-        "continuedl": True,  # resume file parsial (.part)
+        "continuedl": True,  # resume partial files (.part)
         "skip_unavailable_fragments": False,
         "noplaylist": not playlist_all,
         "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
@@ -311,7 +368,7 @@ def _build_ydl_opts(
 
 
 def _apply_subs_metadata_opts(opts: dict, postprocessors: list[dict], choice, audio: bool = False) -> None:
-    """Tambahkan opsi subtitle & metadata ke ydl opts (default mati)."""
+    """Add subtitle & metadata options to ydl opts (off by default)."""
     write_subs = bool(getattr(choice, "write_subs", False))
     if write_subs:
         langs = getattr(choice, "sub_langs", None) or list(SUBTITLE_LANGS_DEFAULT)
@@ -321,3 +378,8 @@ def _apply_subs_metadata_opts(opts: dict, postprocessors: list[dict], choice, au
             opts["embedsubtitles"] = True
     if bool(getattr(choice, "embed_metadata", False)):
         postprocessors.append({"key": "FFmpegMetadata", "add_metadata": True})
+    sponsor_cats = getattr(choice, "sponsorblock", None) or []
+    if sponsor_cats:
+        opts["sponsorblock_remove"] = list(sponsor_cats)
+    if bool(getattr(choice, "write_info_json", False)):
+        opts["writeinfojson"] = True

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Lumenfetch - YouTube Downloader (CLI): MP4 & MP3.
-Entry point aplikasi.
+Application entry point.
 """
 
 from __future__ import annotations
@@ -15,16 +15,13 @@ from pathlib import Path
 from rich.console import Console
 from rich.prompt import Prompt
 
-from core import options, update_checker, utils
+from core import doctor, options, update_checker, utils
+from core.cli import apply_cli_overrides, build_choice_from_args, parse_args, read_batch_file
 from core.constants import (
-    AUDIO_FORMAT,
-    BATCH_DEFAULT_JOBS,
     BATCH_MAX_JOBS,
     PLAYLIST_MODE_ALL,
     PLAYLIST_MODE_SINGLE,
-    SUBTITLE_LANGS_DEFAULT,
     VERSION,
-    VIDEO_FORMAT,
 )
 from core.detector import DetectionError, detect, is_valid_url
 from core.downloader import download
@@ -33,10 +30,10 @@ from core.i18n import resolve_lang, set_lang, t
 
 console = Console()
 
-# Re-export agar test (`main.pyperclip`, `main.static_ffmpeg`) tetap jalan.
+# Re-export so tests (`main.pyperclip`, `main.static_ffmpeg`) keep working.
 try:
     import pyperclip as _pyperclip_mod  # noqa: F401
-except ImportError:  # pragma: no cover - lingkungan tanpa clipboard
+except ImportError:  # pragma: no cover - environment without clipboard
     _pyperclip_mod = None  # type: ignore[assignment]
 
 try:
@@ -47,15 +44,27 @@ except ImportError:  # pragma: no cover
 pyperclip = _pyperclip_mod
 static_ffmpeg = _static_ffmpeg_mod
 
+# Re-exported from core.cli so existing callers (and tests) keep working
+# via the `main.*` namespace.
+__all__ = [
+    "apply_cli_overrides",
+    "build_choice_from_args",
+    "console",
+    "parse_args",
+    "process_batch",
+    "process_url",
+    "read_batch_file",
+]
+
 _history_write_lock = threading.Lock()
 
 
 def _safe_io() -> None:
-    """Jangan crash (UnicodeEncodeError) di terminal non-UTF-8 / output di-pipe.
+    """Do not crash (UnicodeEncodeError) on non-UTF-8 terminals / piped output.
 
-    Emoji di pesan rich butuh UTF-8; di locale cp1252 (PowerShell lama, pipe)
-    print() mentah akan raise. Ganti error handler jadi "replace" sekali
-    di awal - satu baris pertahanan untuk SEMUA output CLI.
+    Emoji in rich messages need UTF-8; under the cp1252 locale (old PowerShell, pipes)
+    a raw print() would raise. Switch the error handler to "replace" once
+    up front - a single line of defense for ALL CLI output.
     """
     import sys as _sys
 
@@ -79,7 +88,7 @@ def _get_pyperclip():
 
 
 def _ensure_ffmpeg() -> bool:
-    """Pastikan ffmpeg tersedia: sistem dulu, bundled fallback (lazy)."""
+    """Ensure ffmpeg is available: system first, bundled fallback (lazy)."""
     from core import ffmpeg as _ffmpeg  # noqa: PLC0415
 
     if _ffmpeg.is_available():
@@ -101,74 +110,8 @@ def _ensure_ffmpeg() -> bool:
         return False
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(
-        prog="lumenfetch",
-        description="YouTube downloader - MP4 & MP3.",
-    )
-    p.add_argument("url", nargs="?", default=None, help="URL video/playlist YouTube langsung")
-    p.add_argument("-t", "--type", dest="output_type", choices=["video", "audio"], default=None)
-    p.add_argument("-f", "--format", dest="fmt", choices=["mp4", "mp3"], default=None)
-    p.add_argument("-q", "--quality", default=None, help="Quality video (Best/1080p/720p/480p/360p/Worst) atau bitrate MP3 (Best/320kbps/192kbps/128kbps)")
-    p.add_argument("-o", "--output", default=None, help="Folder output (override config)")
-    p.add_argument("--cookies", default=None, help="Cookies browser (chrome/firefox/edge/brave/opera/vivaldi/safari/none)")
-    p.add_argument("--cookies-file", default=None, help="File cookies format Netscape")
-    p.add_argument("--max-retry", type=int, default=None)
-    p.add_argument("--playlist", choices=[PLAYLIST_MODE_SINGLE, PLAYLIST_MODE_ALL], default=None)
-    p.add_argument("--subs", action="store_true", help="Download subtitle bila tersedia")
-    p.add_argument("--sub-langs", default=None, help="Bahasa subtitle koma (default: en,id)")
-    p.add_argument("--embed-subs", action="store_true")
-    p.add_argument("--embed-metadata", action="store_true")
-    p.add_argument("--batch", default=None, help="File teks berisi daftar URL (satu per baris)")
-    p.add_argument("--jobs", type=int, default=BATCH_DEFAULT_JOBS, help=f"Paralel batch 1-{BATCH_MAX_JOBS} (default 1)")
-    p.add_argument("--no-clipboard", action="store_true")
-    p.add_argument("--yes", "-y", action="store_true", help="Lewati konfirmasi nama file")
-    p.add_argument("--verbose", "-v", action="store_true", help="Log detail ke file + console")
-    p.add_argument("--ui-lang", choices=["en", "id"], default=None, help="Display language / bahasa tampilan (default: en, remembered)")
-    p.add_argument("--history", action="store_true", help="Tampilkan riwayat lalu keluar")
-    p.add_argument("--version", action="store_true", help="Tampilkan versi lalu keluar")
-    return p.parse_args(argv)
-
-
-def apply_cli_overrides(choice, args: argparse.Namespace):
-    """Terapkan flag CLI ke DownloadChoice tanpa prompt tambahan."""
-    if args.playlist:
-        choice.playlist_mode = args.playlist
-    if args.subs:
-        choice.write_subs = True
-        if args.sub_langs:
-            choice.sub_langs = [s.strip().lower() for s in str(args.sub_langs).replace(",", " ").split() if s.strip()]
-        else:
-            choice.sub_langs = list(SUBTITLE_LANGS_DEFAULT)
-    if args.embed_subs:
-        choice.write_subs = True
-        if not choice.sub_langs:
-            choice.sub_langs = list(SUBTITLE_LANGS_DEFAULT)
-        choice.embed_subs = True
-    if args.embed_metadata:
-        choice.embed_metadata = True
-    return choice
-
-
-def build_choice_from_args(content, args: argparse.Namespace):
-    """Bangun DownloadChoice non-interaktif dari flag CLI."""
-    from core.options import DownloadChoice  # noqa: PLC0415
-
-    kind = args.output_type or ("audio" if content.content_type == "AUDIO" else "video")
-    if args.fmt:
-        fmt = args.fmt.lower()
-    else:
-        fmt = AUDIO_FORMAT if kind == "audio" else VIDEO_FORMAT
-    if kind == "audio" and fmt != AUDIO_FORMAT:
-        fmt = AUDIO_FORMAT
-    if kind == "video" and fmt != VIDEO_FORMAT:
-        fmt = VIDEO_FORMAT
-    choice = DownloadChoice(output_kind=kind, quality=args.quality or "Best", fmt=fmt)
-    return apply_cli_overrides(choice, args)
-
-
 def try_clipboard_url(config: dict, last_prompted: str | None) -> tuple[str | None, str | None]:
-    """Tawarkan URL YouTube dari clipboard (sekali per isi, tidak berulang)."""
+    """Offer a YouTube URL from the clipboard (once per content, no repeats)."""
     if not config.get("auto_paste", True):
         return None, last_prompted
 
@@ -272,6 +215,23 @@ def _save_history_threadsafe(config: dict, entry: dict) -> None:
         utils.add_history_entry(config, entry)
 
 
+def _maybe_show_updates() -> None:
+    """yt-dlp + self update notices. Failures are silent by design."""
+    try:
+        has_update, installed_version, latest_version = update_checker.check_for_update()
+    except Exception:  # noqa: BLE001
+        has_update, installed_version, latest_version = False, "", None
+    if has_update and latest_version:
+        options.show_update_notice(installed_version, latest_version)
+    try:
+        self_update, self_installed, self_latest = update_checker.check_self_update()
+    except Exception:  # noqa: BLE001
+        self_update, self_latest = False, None
+        self_installed = VERSION
+    if self_update and self_latest:
+        options.show_self_update_notice(self_installed, self_latest)
+
+
 def process_url(
     url: str,
     config: dict,
@@ -279,7 +239,7 @@ def process_url(
     auto_confirm: bool = False,
     playlist_mode: str | None = None,
 ) -> bool:
-    """Proses satu URL YouTube. Return True bila sukses."""
+    """Process a single YouTube URL. Return True on success."""
     from core.log import get_logger  # noqa: PLC0415
 
     log = get_logger()
@@ -369,18 +329,8 @@ def process_url(
     return bool(entry.get("success"))
 
 
-def read_batch_file(path: str | Path) -> list[str]:
-    urls: list[str] = []
-    for line in Path(path).read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        urls.append(line)
-    return urls
-
-
 def process_batch(urls: list[str], config: dict, args: argparse.Namespace) -> dict:
-    """Proses banyak URL (sequential/paralel). Return ringkasan."""
+    """Process many URLs (sequential/parallel). Return a summary."""
     jobs = max(1, min(int(getattr(args, "jobs", 1) or 1), BATCH_MAX_JOBS))
     results: dict = {"total": len(urls), "success": 0, "failed": 0}
 
@@ -396,7 +346,8 @@ def process_batch(urls: list[str], config: dict, args: argparse.Namespace) -> di
                         cookies_file=config.get("cookies_file"),
                     )
                     choice = build_choice_from_args(content_probe, args)
-                except DetectionError:
+                except DetectionError as e:
+                    console.print(f"[red]{u}: {e}[/red]")
                     choice = None
             if choice is not None:
                 return process_url(u, config, choice_override=choice, auto_confirm=True, playlist_mode=args.playlist)
@@ -407,10 +358,12 @@ def process_batch(urls: list[str], config: dict, args: argparse.Namespace) -> di
                     cookies_file=config.get("cookies_file"),
                 )
                 default_choice = build_choice_from_args(probe, args)
-            except DetectionError:
+            except DetectionError as e:
+                console.print(f"[red]{u}: {e}[/red]")
                 return False
             return process_url(u, config, choice_override=default_choice, auto_confirm=True, playlist_mode=args.playlist)
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            console.print(f"[red]{u}: {e}[/red]")
             return False
 
     if jobs == 1 or len(urls) <= 1:
@@ -431,8 +384,8 @@ def process_batch(urls: list[str], config: dict, args: argparse.Namespace) -> di
 
 
 def main(argv: list[str] | None = None) -> int:
-    # argv=None berarti mode interaktif (tidak baca sys.argv agar
-    # pemanggilan programatik/test tidak kemakan argumen pytest).
+    # argv=None means interactive mode (do not read sys.argv so that
+    # programmatic/test calls are not polluted by pytest arguments).
     _safe_io()
     args = parse_args([] if argv is None else argv)
     from core.log import setup as _setup_log  # noqa: PLC0415
@@ -444,8 +397,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     config = utils.load_config()
-    # Bahasa tampilan: --ui-lang > env LUMENFETCH_LANG > config > default en.
-    # Pilihan eksplisit via CLI diingat untuk sesi berikutnya.
+    # Display language: --ui-lang > env LUMENFETCH_LANG > config > default en.
+    # An explicit CLI choice is remembered for the next session.
     if args.ui_lang:
         config["ui_lang"] = args.ui_lang
         utils.save_config(config)
@@ -465,6 +418,11 @@ def main(argv: list[str] | None = None) -> int:
         options.show_history_table(config.get("history", []))
         return 0
 
+    if args.doctor:
+        options.show_header(VERSION)
+        ok = doctor.show(doctor.run_all(config))
+        return 0 if ok else 1
+
     if args.batch:
         try:
             urls = read_batch_file(args.batch)
@@ -481,9 +439,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.url:
         options.show_header(VERSION)
-        has_update, installed_version, latest_version = update_checker.check_for_update()
-        if has_update and latest_version:
-            options.show_update_notice(installed_version, latest_version)
+        _maybe_show_updates()
         non_interactive = bool(
             args.output_type or args.fmt or args.quality or args.yes or args.playlist or args.subs or args.embed_metadata or args.embed_subs
         )
@@ -504,9 +460,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     options.show_header(VERSION)
-    has_update, installed_version, latest_version = update_checker.check_for_update()
-    if has_update and latest_version:
-        options.show_update_notice(installed_version, latest_version)
+    _maybe_show_updates()
 
     last_clip_prompted: str | None = None
 
@@ -526,6 +480,9 @@ def main(argv: list[str] | None = None) -> int:
             continue
         if raw.lower() == "help":
             options.show_help()
+            continue
+        if raw.lower() == "doctor":
+            doctor.show(doctor.run_all(config))
             continue
         if not raw:
             continue
@@ -549,7 +506,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def cli() -> None:
-    """Entry point console script `lumenfetch` (lihat pyproject [project.scripts])."""
+    """Console script entry point `lumenfetch` (see pyproject [project.scripts])."""
     import sys as _sys
 
     try:

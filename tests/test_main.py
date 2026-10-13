@@ -29,6 +29,7 @@ def test_main_does_not_crash_when_static_ffmpeg_fails(monkeypatch):
         main.static_ffmpeg, "add_paths", lambda: (_ for _ in ()).throw(RuntimeError("gagal download ffmpeg"))
     )
     monkeypatch.setattr(main.update_checker, "check_for_update", lambda: (False, "2026.1.1", None))
+    monkeypatch.setattr(main.update_checker, "check_self_update", lambda: (False, "2.0.0", None))
     monkeypatch.setattr(main.utils, "load_config", lambda: utils.get_default_config())
     monkeypatch.setattr(main.options, "show_header", lambda version: None)
     # Langsung "q" biar main() keluar dari loop tanpa perlu interaksi lain

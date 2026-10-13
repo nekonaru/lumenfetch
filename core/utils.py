@@ -1,11 +1,11 @@
 """
 utils.py
-Kumpulan fungsi bantu: sanitasi nama file, format ukuran,
-dan baca/tulis config.json.
+Collection of helper functions: filename sanitization, size formatting,
+and config.json read/write.
 
-Fasad kompatibel: nilai kanonis tinggal di core.constants,
-tapi tetap di-re-export dari sini agar import lama
-(`from core.utils import MAX_TITLE_LEN`, dll) tidak rusak.
+Compatible facade: canonical values live in core.constants,
+but are still re-exported here so old imports
+(`from core.utils import MAX_TITLE_LEN`, etc.) don't break.
 """
 
 from __future__ import annotations
@@ -55,8 +55,8 @@ __all__ = [
     "format_eta",
 ]
 
-# Re-export agar `utils.MAX_TITLE_LEN` dkk tetap tersedia.
-# (Nilai kanonisnya di core.constants)
+# Re-export so `utils.MAX_TITLE_LEN` etc. remain available.
+# (Canonical values live in core.constants)
 
 
 def _project_root() -> Path:
@@ -64,7 +64,7 @@ def _project_root() -> Path:
 
 
 def _user_data_dir() -> Path:
-    """Direktori data user per-OS (tanpa dependency platformdirs)."""
+    """Per-OS user data directory (without the platformdirs dependency)."""
     import os
     import sys
 
@@ -87,26 +87,26 @@ def _legacy_config_path() -> Path:
 
 
 def _resolve_config_path() -> Path:
-    """Prioritas: CONFIG_PATH yang di-monkeypatch test > user dir.
+    """Priority: test-monkeypatched CONFIG_PATH > user dir.
 
-    Fungsi ini dipanggil dinamis (bukan sekali di import) agar
-    `monkeypatch.setattr(utils, "CONFIG_PATH", ...)` tetap dihormati.
+    This is called dynamically (not once at import) so that
+    `monkeypatch.setattr(utils, "CONFIG_PATH", ...)` stays respected.
     """
     return CONFIG_PATH
 
 
-# Lokasi kanonis: user dir. File lama di project root dimigrasi otomatis
-# sekali saat load pertama (lihat _migrate_legacy_config).
+# Canonical location: user dir. The old file in the project root is migrated automatically
+# once on first load (see _migrate_legacy_config).
 CONFIG_PATH = _user_data_dir() / "config.json"
 
 
 def get_default_download_folder() -> str:
     """
-    Folder download default: folder "Downloads" asli sistem operasi user
-    (sama seperti browser lain - Chrome, Firefox, Edge, dll - defaultnya
-    selalu ke situ), BUKAN folder relatif "downloads/" di dalam folder
-    project. User tetap bisa ganti ke folder lain kapan saja lewat command
-    settings > [1] Ganti folder download default.
+    Default download folder: the user's real OS "Downloads" folder
+    (same as other browsers - Chrome, Firefox, Edge, etc. - which always
+    default there), NOT a relative "downloads/" folder inside the
+    project folder. Users can still switch to another folder anytime via the
+    settings command > [1] Change default download folder.
     """
     return str(Path.home() / "Downloads")
 
@@ -126,31 +126,31 @@ DEFAULT_CONFIG = {
 
 def get_default_config() -> dict:
     """
-    Return salinan BENAR-BENAR terpisah dari DEFAULT_CONFIG (deep copy).
+    Return a TRULY separate copy of DEFAULT_CONFIG (deep copy).
 
-    Wajib pakai ini (bukan DEFAULT_CONFIG.copy()) di manapun butuh config default,
-    karena "history" adalah list - shallow copy cuma menyalin referensinya,
-    bukan isinya. Kalau nanti list itu dimutasi (mis. lewat add_history_entry),
-    DEFAULT_CONFIG module-level ikut "tercemar" dan bocor ke semua config baru
-    yang dibuat sesudahnya, termasuk pas user reset ke default.
+    Always use this (not DEFAULT_CONFIG.copy()) wherever a default config is needed,
+    because "history" is a list - a shallow copy only copies its reference,
+    not its contents. If that list is later mutated (e.g. via add_history_entry),
+    the module-level DEFAULT_CONFIG gets "contaminated" and leaks into every new config
+    created afterwards, including when the user resets to defaults.
     """
     return copy.deepcopy(DEFAULT_CONFIG)
 
 
 def _coerce_config(data: dict) -> dict:
-    """Validasi ringan untuk config hasil load / edit manual."""
+    """Light validation for loaded / manually edited config."""
     merged = get_default_config()
     if not isinstance(data, dict):
         return merged
     merged.update(data)
-    # max_retry harus int >= 0, kalau rusak fallback ke default.
+    # max_retry must be int >= 0, fall back to default if broken.
     try:
         merged["max_retry"] = max(0, int(merged.get("max_retry", 3)))
     except (TypeError, ValueError):
         merged["max_retry"] = 3
     if not isinstance(merged.get("history"), list):
         merged["history"] = []
-    # Normalisasi cookies_browser: "none"/"" dianggap None (nonaktif).
+    # Normalize cookies_browser: "none"/"" means None (disabled).
     cb = merged.get("cookies_browser")
     if cb is None:
         pass
@@ -162,14 +162,14 @@ def _coerce_config(data: dict) -> dict:
         merged["cookies_browser"] = None
     if not isinstance(merged.get("download_folder"), str) or not merged["download_folder"].strip():
         merged["download_folder"] = get_default_download_folder()
-    # cookies_file: path ke file cookies Netscape (opsional). Normalisasi "" -> None.
+    # cookies_file: path to the Netscape cookies file (optional). Normalize "" -> None.
     cf = merged.get("cookies_file")
     if isinstance(cf, str):
         cf = cf.strip()
         merged["cookies_file"] = cf or None
     else:
         merged["cookies_file"] = None
-    # ui_lang: hanya "en"/"id" yang sah, selain itu fallback ke default.
+    # ui_lang: only "en"/"id" are valid, anything else falls back to default.
     lang = str(merged.get("ui_lang", "")).strip().lower()
     merged["ui_lang"] = lang if lang in ("en", "id") else "en"
     return merged
@@ -180,9 +180,9 @@ def _canonical_config_path() -> Path:
 
 
 def _migrate_legacy_config() -> None:
-    """Salin config lama (project root) ke user dir bila user dir belum ada.
+    """Copy the legacy config (project root) to the user dir if none exists there yet.
 
-    Dilewati bila CONFIG_PATH sedang di-monkeypatch test ke lokasi lain.
+    Skipped when CONFIG_PATH is currently monkeypatched by tests to another location.
     """
     try:
         target = _resolve_config_path()
@@ -191,7 +191,7 @@ def _migrate_legacy_config() -> None:
         if target.exists():
             return
         legacy = _legacy_config_path()
-        # Jangan migrasi file yang cuma berisi default/Contoh history lokal dev.
+        # Skip migration for files containing only defaults / local dev sample history.
         if not legacy.exists() or legacy.resolve() == target.resolve():
             return
         data = json.loads(legacy.read_text(encoding="utf-8"))
@@ -204,7 +204,7 @@ def _migrate_legacy_config() -> None:
 
 
 def load_config() -> dict:
-    """Baca config.json, buat default kalau belum ada / rusak."""
+    """Read config.json, creating defaults when missing / corrupted."""
     _migrate_legacy_config()
     path = _resolve_config_path()
     if not path.exists():
@@ -224,18 +224,17 @@ def load_config() -> dict:
 
 def save_config(config: dict) -> None:
     """
-    Simpan config ke config.json. Gagal simpan (mis. folder tempat app
-    dijalankan read-only) TIDAK raise - aplikasi tetap jalan pakai config
-    in-memory, cuma perubahannya gak ke-persist ke disk. Fail-safe di sini
-    otomatis melindungi SEMUA pemanggilnya (load_config, handle_settings di
-    main.py, add_history_entry) tanpa perlu tiap caller bungkus try/except
-    masing-masing.
+    Save config to config.json. Save failures (e.g. the folder the app
+    runs in is read-only) do NOT raise - the app keeps running with the
+    in-memory config, only the changes are not persisted to disk. This fail-safe
+    automatically protects ALL of its callers (load_config, handle_settings in
+    main.py, add_history_entry) without each caller needing its own try/except.
 
-    utils.py sengaja tidak nge-print apa pun ke user (module ini "helper
-    murni" - lihat CONTRIBUTING.md, tidak boleh tahu soal CLI/rich) - kalau
-    perlu notifikasi ke user, itu tanggung jawab caller.
+    utils.py deliberately prints nothing to the user (this module is a "pure
+    helper" - see CONTRIBUTING.md, it must not know about CLI/rich) - if
+    user notification is needed, that is the caller's responsibility.
 
-    Thread-safe untuk batch paralel via lock proses-lokal.
+    Thread-safe for parallel batches via a process-local lock.
     """
     lock = _history_lock()
     with lock:
@@ -261,7 +260,7 @@ def _history_lock():
 
 
 def add_history_entry(config: dict, entry: dict) -> None:
-    """Tambah entri riwayat baru, maksimal simpan HISTORY_LIMIT entri terakhir."""
+    """Add a new history entry, keeping at most the last HISTORY_LIMIT entries."""
     history = config.get("history")
     if not isinstance(history, list):
         history = []
@@ -277,18 +276,18 @@ def clear_history(config: dict) -> None:
 
 
 def sanitize_filename(name: str | None) -> str:
-    """Bersihkan nama file dari karakter ilegal & spasi, truncate max 80 char."""
+    """Clean a filename of illegal characters & whitespace, truncate to max 80 chars."""
     if not name:
         name = "untitled"
     name = re.sub(ILLEGAL_CHARS, "_", name)
-    # Ganti SEMUA whitespace (spasi, tab, newline) jadi "-", bukan cuma " ".
+    # Replace ALL whitespace (spaces, tabs, newlines) with "-", not just " ".
     name = re.sub(r"\s+", "-", name.strip())
     name = re.sub(r"-{2,}", "-", name)
-    # Windows melarang nama diakhiri titik/spasi.
+    # Windows forbids names ending in a dot/space.
     name = name.strip(" .")
     if not name:
         name = "untitled"
-    # Nama reserved Windows (CON, PRN, ...) tidak boleh dipakai polos.
+    # Windows reserved names (CON, PRN, ...) must not be used bare.
     if name.upper() in WINDOWS_RESERVED_NAMES:
         name = f"_{name}"
     return name[:MAX_TITLE_LEN]
@@ -296,10 +295,10 @@ def sanitize_filename(name: str | None) -> str:
 
 def is_valid_naming_template(template: str) -> bool:
     """
-    Cek apakah naming template valid sebelum disimpan ke config - dipakai di
-    handle_settings() supaya user tidak bisa nyimpen template yang bakal
-    bikin build_filename() crash (mis. placeholder salah ketik seperti
-    %(titel)s bukannya %(title)s).
+    Check whether a naming template is valid before saving it to config - used in
+    handle_settings() so users cannot save a template that would make
+    build_filename() crash (e.g. a mistyped placeholder like
+    %(titel)s instead of %(title)s).
     """
     try:
         template % {"platform": "x", "title": "x", "year": 2026}
@@ -310,12 +309,12 @@ def is_valid_naming_template(template: str) -> bool:
 
 def build_filename(platform: str, title: str, ext: str, template: str) -> str:
     """
-    Susun nama file berdasarkan naming template dari config.
+    Build a filename from the naming template in config.
 
-    Fail-safe: kalau template ternyata tidak valid (mis. lolos tervalidasi
-    saat disimpan tapi rusak lewat edit manual config.json), otomatis
-    fallback ke template default - supaya kesalahan konfigurasi TIDAK PERNAH
-    bikin seluruh aplikasi crash pas lagi proses download.
+    Fail-safe: if the template turns out to be invalid (e.g. it passed validation
+    when saved but was broken via manual config.json edits), automatically
+    fall back to the default template - so a config mistake NEVER
+    crashes the whole app mid-download.
     """
     year = datetime.now().year
     values = {
@@ -341,27 +340,27 @@ def _iter_dir_files(folder: Path):
 
 def find_indexed_files(dest: Path) -> list[Path]:
     """
-    Cari file hasil outtmpl multi-item: pola "{stem}-<angka>.<ext>" persis
-    (index-nya dari %(playlist_index,autonumber)d di yt-dlp, jadi selalu
-    angka murni).
+    Find multi-item outtmpl result files: exact "{stem}-<number>.<ext>" pattern
+    (the index comes from %(playlist_index,autonumber)d in yt-dlp, so it is
+    always a pure number).
 
-    SENGAJA pakai regex yang di-anchor ke akhir nama file, BUKAN glob
-    "{stem}-*.*" biasa - glob polos itu false-positive kalau ada konten lain
-    yang judulnya kebetulan numpuk sebagai prefix. Misal stem "Sunset" bakal
-    salah kena "Sunset-Beach-1.jpg" (padahal itu punya konten LAIN yang
-    judulnya "Sunset-Beach"), karena "Beach-1.jpg" tetap cocok pola glob
-    "*.*" longgar. Dengan regex `-\\d+\\.` di akhir, "Sunset-Beach-1.jpg"
-    tidak match untuk stem "Sunset" (karena setelah "Sunset-" karakternya
-    "B", bukan digit), tapi tetap match buat stem "Sunset-Beach" itu sendiri.
+    DELIBERATELY uses a regex anchored to the end of the filename, NOT a plain
+    "{stem}-*.*" glob - a bare glob false-positives when other content
+    happens to share a prefix. E.g. stem "Sunset" would wrongly match
+    "Sunset-Beach-1.jpg" (which belongs to OTHER content titled
+    "Sunset-Beach"), because "Beach-1.jpg" still fits the loose "*.*"
+    glob pattern. With a trailing `-\\d+\\.` regex, "Sunset-Beach-1.jpg"
+    does not match stem "Sunset" (since the character after "Sunset-" is
+    "B", not a digit), but still matches for the "Sunset-Beach" stem itself.
 
-    Hasilnya diurutkan NUMERIK berdasarkan angka index-nya (bukan alfabetis
-    dari nama file) - kalau pakai sorted() string biasa, "Galeri-10.jpg"
-    bakal muncul SEBELUM "Galeri-2.jpg" (perbandingan karakter '1' < '2'),
-    padahal urutan aslinya seharusnya 2 dulu baru 10.
+    Results are sorted NUMERICALLY by index number (not alphabetically
+    by filename) - with a plain string sorted(), "Galeri-10.jpg"
+    would come BEFORE "Galeri-2.jpg" (character comparison '1' < '2'),
+    while the true order should be 2 before 10.
 
-    FIX: tidak pakai `glob(f"{stem}-*.*")` mentah karena stem bisa mengandung
-    karakter glob (`[`, `*`, `?`) dari judul asli (mis. "Video [Official]").
-    Pakai iterdir + regex agar aman untuk semua judul.
+    FIX: do not use a raw `glob(f"{stem}-*.*")` because the stem may contain
+    glob characters (`[`, `*`, `?`) from the original title (e.g. "Video [Official]").
+    Use iterdir + regex to stay safe for all titles.
     """
     pattern = re.compile(rf"^{re.escape(dest.stem)}-(\d+)\.[^.]+$")
     indexed_matches = []
@@ -378,17 +377,17 @@ def find_indexed_files(dest: Path) -> list[Path]:
 
 def resolve_duplicate(path: Path, multi_item: bool = False) -> Path:
     """
-    Kalau nama file sudah ada, tambahin suffix (1), (2), dst ke base filename.
+    If the filename already exists, append a (1), (2), etc. suffix to the base filename.
 
-    multi_item=True dipakai khusus buat galeri/carousel (outtmpl-nya nanti
-    dikasih suffix index seperti "-1.jpg", "-2.jpg" - lihat _build_ydl_opts
-    di downloader.py). File persis "{stem}.{ext}" TIDAK PERNAH benar-benar
-    dibuat untuk kasus ini, jadi mengecek exists() pada path itu sendiri
-    salah - selalu balik False meski sudah pernah didownload sebelumnya.
-    Yang perlu dicek adalah apakah ADA file terindeks dengan stem itu di
-    folder tujuan (lihat find_indexed_files). Tanpa ini, download galeri
-    yang sama dua kali diam-diam menimpa hasil download pertama, alih-alih
-    dapat suffix (1) seperti perilaku normal untuk konten single-item.
+    multi_item=True is used specifically for galleries/carousels (whose outtmpl later
+    gets an index suffix like "-1.jpg", "-2.jpg" - see _build_ydl_opts
+    in downloader.py). The exact "{stem}.{ext}" file is NEVER actually
+    created for this case, so checking exists() on the path itself is
+    wrong - it always returns False even when previously downloaded.
+    What must be checked is whether ANY indexed files with that stem exist in
+    the destination folder (see find_indexed_files). Without this, downloading the
+    same gallery twice silently overwrites the first download instead of
+    getting a (1) suffix like the normal single-item behavior.
     """
 
     def _already_exists(p: Path) -> bool:
@@ -410,8 +409,8 @@ def resolve_duplicate(path: Path, multi_item: bool = False) -> Path:
 
 def build_cookies_from_browser(browser: str | None):
     """
-    Ubah nama browser dari config jadi format yang dipahami yt-dlp
-    (opsi 'cookiesfrombrowser'). Return None kalau fitur nonaktif.
+    Convert a browser name from config into the format yt-dlp understands
+    ('cookiesfrombrowser' option). Return None when the feature is disabled.
     """
     if not browser:
         return None
@@ -424,7 +423,7 @@ def build_cookies_from_browser(browser: str | None):
 
 
 def resolve_cookie_file(path: str | None) -> str | None:
-    """Validasi path file cookies (format Netscape). Return path absolut atau None."""
+    """Validate a cookies file path (Netscape format). Return absolute path or None."""
     if not path:
         return None
     p = Path(str(path)).expanduser()
@@ -434,10 +433,10 @@ def resolve_cookie_file(path: str | None) -> str | None:
 
 
 def apply_cookie_opts(ydl_opts: dict, cookies_browser: str | None, cookies_file: str | None = None) -> bool:
-    """Terapkan opsi cookies ke ydl_opts. Return True bila ada cookies yang dipakai.
+    """Apply cookie options to ydl_opts. Return True when any cookies are used.
 
-    Urutan: file cookies dulu (paling reliable, works walau browser terbuka),
-    lalu cookies browser.
+    Order: cookies file first (most reliable, works even with the browser open),
+    then browser cookies.
     """
     cookie_file = resolve_cookie_file(cookies_file)
     if cookie_file:
@@ -451,7 +450,7 @@ def apply_cookie_opts(ydl_opts: dict, cookies_browser: str | None, cookies_file:
 
 
 def format_size(num_bytes: float | None) -> str:
-    """Format bytes jadi human-readable (KB/MB/GB)."""
+    """Format bytes as human-readable (KB/MB/GB)."""
     if num_bytes is None:
         return "?"
     try:
@@ -468,7 +467,7 @@ def format_size(num_bytes: float | None) -> str:
 
 
 def format_duration(seconds) -> str:
-    """Format detik jadi H:MM:SS atau M:SS."""
+    """Format seconds as H:MM:SS or M:SS."""
     if not seconds:
         return "-"
     try:
@@ -486,11 +485,11 @@ def format_duration(seconds) -> str:
 
 def _format_size_bytes_from_info(fmt: dict, duration: float | None) -> int | None:
     """
-    Ambil ukuran (bytes) dari satu format yt-dlp. "filesize" itu ukuran
-    exact yang dilaporkan platform, "filesize_approx" perkiraan yt-dlp
-    sendiri. Kalau dua-duanya gak ada (cukup umum, banyak platform gak
-    ngasih tau ukuran di metadata), fallback hitung dari bitrate (tbr,
-    satuan kbit/s) dikali durasi video.
+    Get the size (bytes) of a single yt-dlp format. "filesize" is the exact
+    size reported by the platform, "filesize_approx" is yt-dlp's own
+    estimate. If neither exists (fairly common, many platforms don't
+    report sizes in metadata), fall back to computing from bitrate (tbr,
+    in kbit/s) times the video duration.
     """
     if not isinstance(fmt, dict):
         return None
@@ -518,12 +517,12 @@ def _format_size_bytes_from_info(fmt: dict, duration: float | None) -> int | Non
 
 def estimate_video_size_bytes(formats: list[dict], quality: str, duration: float | None) -> int | None:
     """
-    Estimasi ukuran total (video + audio yang bakal digabung) buat satu
-    opsi quality, berdasarkan daftar format yang sudah didapat yt-dlp pas
-    deteksi (tanpa perlu request tambahan ke platform). Return None kalau
-    datanya gak cukup buat ngasih estimasi (mis. platform gak expose
-    filesize/bitrate sama sekali) - lebih baik gak nampilin estimasi
-    daripada nampilin angka ngasal.
+    Estimate the total size (video + audio to be merged) for one
+    quality option, based on the format list yt-dlp already fetched during
+    detection (no extra platform requests needed). Return None when
+    the data is insufficient for an estimate (e.g. the platform exposes
+    no filesize/bitrate at all) - better to show no estimate
+    than a made-up number.
     """
     if not formats or not duration:
         return None
@@ -540,11 +539,11 @@ def estimate_video_size_bytes(formats: list[dict], quality: str, duration: float
         if limit:
             video_formats = [f for f in video_formats if f["height"] <= limit]
             if not video_formats:
-                # Tier ini kemungkinan besar gak tersedia buat konten ini
-                # (mis. sumbernya cuma sampai 720p, gak ada opsi 360p) -
-                # mending gak nampilin estimasi sama sekali daripada nebak
-                # pakai ukuran tier LAIN yang bisa menyesatkan (kelihatan
-                # kayak "360p ukurannya segede 1080p").
+                # This tier is most likely unavailable for this content
+                # (e.g. the source only goes up to 720p, no 360p option) -
+                # better to show no estimate at all than guess
+                # using ANOTHER tier's size which could mislead (looking
+                # like "360p is as big as 1080p").
                 return None
         video_formats.sort(key=lambda f: f["height"], reverse=True)
 
@@ -565,11 +564,11 @@ def estimate_video_size_bytes(formats: list[dict], quality: str, duration: float
 
 def estimate_audio_size_bytes(formats: list[dict], quality: str, duration: float | None) -> int | None:
     """
-    Estimasi ukuran hasil ekstraksi audio. Untuk quality dengan bitrate
-    tetap (320/192/128 kbps), dihitung langsung dari bitrate target itu
-    sendiri (lebih akurat, karena itu memang bitrate output-nya setelah
-    ffmpeg convert - bukan bitrate sumbernya). Untuk "Best", dipakai
-    estimasi dari stream audio sumber terbaik yang ada.
+    Estimate the audio extraction result size. For qualities with a fixed
+    bitrate (320/192/128 kbps), computed directly from that target bitrate
+    itself (more accurate, since that is the actual output bitrate after
+    the ffmpeg convert - not the source bitrate). For "Best", the
+    estimate from the best available source audio stream is used.
     """
     if not duration:
         return None
@@ -594,11 +593,10 @@ def estimate_audio_size_bytes(formats: list[dict], quality: str, duration: float
 
 def estimate_average_speed_bps(history: list[dict], sample_size: int = 10) -> float | None:
     """
-    Kecepatan download rata-rata (bytes/detik) dari beberapa download
-    terakhir yang sukses di riwayat - dipakai buat estimasi waktu download,
-    lebih jujur daripada nebak angka kecepatan generik yang belum tentu
-    sesuai koneksi user. Return None kalau belum ada riwayat yang punya
-    data lengkap (mis. baru pertama kali pakai aplikasi).
+    Average download speed (bytes/second) from recent successful downloads
+    in history - used for download time estimates, more honest than guessing
+    a generic speed number that may not match the user's connection.
+    Return None when no history yet has complete data (e.g. first-time app use).
     """
     speeds = []
     for entry in (history or [])[:sample_size]:
@@ -618,7 +616,7 @@ def estimate_average_speed_bps(history: list[dict], sample_size: int = 10) -> fl
 
 
 def format_eta(size_bytes: int | None, speed_bps: float | None, lang: str | None = None) -> str | None:
-    """Ubah estimasi ukuran + kecepatan jadi teks perkiraan waktu ("~14 detik", "~2 menit"). None kalau datanya kurang."""
+    """Convert size + speed estimates into ETA text ("~14 seconds", "~2 minutes"). None when data is insufficient."""
     from core.i18n import DEFAULT_LANG, STRINGS, SUPPORTED_LANGS, get_lang  # noqa: PLC0415
 
     if lang not in SUPPORTED_LANGS:

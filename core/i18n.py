@@ -1,6 +1,6 @@
-"""i18n.py - Katalog teks tampilan CLI (English default, Indonesia opsional).
+"""i18n.py - CLI display-text catalog (English default, Indonesian optional).
 
-Prioritas bahasa (mirip wattpdl): --ui-lang > env LUMENFETCH_LANG >
+Language priority (like wattpdl): --ui-lang > env LUMENFETCH_LANG >
 config ui_lang > default "en".
 """
 
@@ -64,6 +64,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "[bold]AVAILABLE COMMANDS[/bold]\n"
             "history   Show download history\n"
             "settings  Open settings\n"
+            "doctor    Diagnose setup\n"
             "help      Show this page\n"
             "q/quit    Quit the app\n\n"
             "[bold]HOW TO USE[/bold]\n"
@@ -141,6 +142,40 @@ STRINGS: dict[str, dict[str, str]] = {
         ),
         "err.unknown": "❌ Download error occurred",
         "err.unknown_detect": "Not a valid YouTube URL or unsupported",
+        "dl.cookie_retry": "continuing without cookies...",
+        "dl.retry": "🔄 Retry {a}/{m} in {d:.0f}s...",
+        "doctor.title": "🩺 Lumenfetch Doctor",
+        "doctor.col_check": "Check",
+        "doctor.col_result": "Result",
+        "doctor.col_detail": "Detail",
+        "doctor.col_hint": "Fix",
+        "doctor.python": "Python >= 3.9",
+        "doctor.python_hint": "Install Python 3.9+ from python.org",
+        "doctor.ffmpeg": "ffmpeg",
+        "doctor.ffmpeg_bundled": "bundled (static-ffmpeg)",
+        "doctor.ffmpeg_hint": "Install system ffmpeg or pip install static-ffmpeg",
+        "doctor.curl": "curl_cffi (bot-check bypass)",
+        "doctor.installed": "installed",
+        "doctor.missing": "missing",
+        "doctor.curl_hint": "pip install curl_cffi",
+        "doctor.ytdlp": "yt-dlp",
+        "doctor.ytdlp_hint": "pip install yt-dlp",
+        "doctor.ytdlp_update": "newer {latest} available: pip install --upgrade yt-dlp",
+        "doctor.self": "lumenfetch",
+        "doctor.self_update": "newer {latest} available: pip install --upgrade lumenfetch",
+        "doctor.network": "YouTube reachable",
+        "doctor.network_hint": "Check your internet connection / VPN",
+        "doctor.cookies": "Browser cookies",
+        "doctor.cookies_off": "off",
+        "doctor.cookies_hint": "Close the browser fully or use --cookies-file",
+        "doctor.config": "Config writable",
+        "doctor.config_hint": "Check folder permissions",
+        "selfupdate.title": "🔔 Lumenfetch update available",
+        "selfupdate.body": (
+            "You have lumenfetch [bold]{installed}[/bold], "
+            "version [bold green]{latest}[/bold green] is out.\n"
+            "[bold cyan]pip install --upgrade lumenfetch[/bold cyan]"
+        ),
         "err.no_video": "This content has no downloadable video",
         "err.not_youtube_url": "Not a valid YouTube URL",
     },
@@ -191,6 +226,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "[bold]COMMAND TERSEDIA[/bold]\n"
             "history   Lihat riwayat download\n"
             "settings  Buka pengaturan\n"
+            "doctor    Diagnosa setup\n"
             "help      Tampilkan halaman ini\n"
             "q/quit    Keluar dari aplikasi\n\n"
             "[bold]CARA PAKAI[/bold]\n"
@@ -268,6 +304,40 @@ STRINGS: dict[str, dict[str, str]] = {
         ),
         "err.unknown": "❌ Terjadi kesalahan saat download",
         "err.unknown_detect": "URL bukan link YouTube yang valid atau tidak didukung",
+        "dl.cookie_retry": "lanjut tanpa cookies...",
+        "dl.retry": "🔄 Retry {a}/{m} dalam {d:.0f}s...",
+        "doctor.title": "🩺 Lumenfetch Doctor",
+        "doctor.col_check": "Cek",
+        "doctor.col_result": "Hasil",
+        "doctor.col_detail": "Detail",
+        "doctor.col_hint": "Solusi",
+        "doctor.python": "Python >= 3.9",
+        "doctor.python_hint": "Install Python 3.9+ dari python.org",
+        "doctor.ffmpeg": "ffmpeg",
+        "doctor.ffmpeg_bundled": "bundled (static-ffmpeg)",
+        "doctor.ffmpeg_hint": "Install ffmpeg sistem atau pip install static-ffmpeg",
+        "doctor.curl": "curl_cffi (lolos bot-check)",
+        "doctor.installed": "terinstall",
+        "doctor.missing": "hilang",
+        "doctor.curl_hint": "pip install curl_cffi",
+        "doctor.ytdlp": "yt-dlp",
+        "doctor.ytdlp_hint": "pip install yt-dlp",
+        "doctor.ytdlp_update": "ada {latest} yang baru: pip install --upgrade yt-dlp",
+        "doctor.self": "lumenfetch",
+        "doctor.self_update": "ada {latest} yang baru: pip install --upgrade lumenfetch",
+        "doctor.network": "YouTube terjangkau",
+        "doctor.network_hint": "Cek koneksi internet / VPN",
+        "doctor.cookies": "Cookies browser",
+        "doctor.cookies_off": "nonaktif",
+        "doctor.cookies_hint": "Tutup browser total atau pakai --cookies-file",
+        "doctor.config": "Config bisa ditulis",
+        "doctor.config_hint": "Cek izin folder",
+        "selfupdate.title": "🔔 Update Lumenfetch tersedia",
+        "selfupdate.body": (
+            "Lumenfetch kamu versi [bold]{installed}[/bold], "
+            "versi [bold green]{latest}[/bold green] sudah tersedia.\n"
+            "[bold cyan]pip install --upgrade lumenfetch[/bold cyan]"
+        ),
         "err.no_video": "Konten ini tidak berisi video yang bisa didownload",
         "err.not_youtube_url": "URL bukan link YouTube yang valid",
     },
@@ -275,7 +345,7 @@ STRINGS: dict[str, dict[str, str]] = {
 
 
 def set_lang(code: str | None) -> str:
-    """Set bahasa aktif. Return kode yang dipakai (fallback ke default bila invalid)."""
+    """Set the active language. Return the code in use (fallback to default if invalid)."""
     global _current
     code = (code or "").strip().lower()
     _current = code if code in SUPPORTED_LANGS else DEFAULT_LANG
@@ -287,7 +357,7 @@ def get_lang() -> str:
 
 
 def t(key: str, **kwargs) -> str:
-    """Ambil string UI untuk bahasa aktif (fallback: English, lalu key itu sendiri)."""
+    """Get the UI string for the active language (fallback: English, then the key itself)."""
     template = STRINGS.get(_current, {}).get(key)
     if template is None:
         template = STRINGS[DEFAULT_LANG].get(key, key)
@@ -298,7 +368,7 @@ def t(key: str, **kwargs) -> str:
 
 
 def resolve_lang(cli: str | None = None, config: dict | None = None) -> str:
-    """Urutan: --ui-lang > env LUMENFETCH_LANG > config ui_lang > default."""
+    """Order: --ui-lang > env LUMENFETCH_LANG > config ui_lang > default."""
     if (cli or "").strip().lower() in SUPPORTED_LANGS:
         return cli.strip().lower()  # type: ignore[union-attr]
     env = os.environ.get(ENV_VAR, "").strip().lower()

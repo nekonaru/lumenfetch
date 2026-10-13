@@ -1,7 +1,7 @@
 """
 detector.py
-Deteksi info video YouTube (judul, durasi, playlist) dari URL memakai yt-dlp,
-tanpa mendownload.
+Detect YouTube video info (title, duration, playlist) from a URL using yt-dlp,
+without downloading.
 """
 
 from __future__ import annotations
@@ -33,9 +33,9 @@ URL_PATTERN = re.compile(r"^https?://[^\s]+$", re.IGNORECASE)
 class DetectedContent:
     url: str
     title: str
-    content_type: str = "VIDEO"  # "VIDEO" | "AUDIO" (audio = stream audio YouTube)
+    content_type: str = "VIDEO"  # "VIDEO" | "AUDIO" (audio = YouTube audio stream)
     duration: float | None = None
-    entries: list = field(default_factory=list)  # untuk playlist
+    entries: list = field(default_factory=list)  # for playlists
     raw_info: dict = field(default_factory=dict)
 
     @property
@@ -51,7 +51,7 @@ def _host(url: str) -> str:
 
 
 def is_youtube_url(url: str) -> bool:
-    """True bila URL http(s) dengan host domain YouTube yang dikenal."""
+    """True when the URL is http(s) with a known YouTube domain host."""
     if not isinstance(url, str):
         return False
     url = url.strip()
@@ -62,7 +62,7 @@ def is_youtube_url(url: str) -> bool:
 
 
 def is_valid_url(text: str) -> bool:
-    """URL YouTube yang valid (http/https + host YouTube)."""
+    """A valid YouTube URL (http/https + YouTube host)."""
     if not isinstance(text, str):
         return False
     text = text.strip()
@@ -71,10 +71,10 @@ def is_valid_url(text: str) -> bool:
 
 def strip_playlist_context(url: str) -> str:
     """
-    Buang parameter "list" (dan "index") dari URL kalau URL itu jelas
-    menunjuk ke SATU video spesifik (ada "v=", /shorts/, /embed/, youtu.be),
-    bukan link playlist murni. Tanpa ini, video biasa yang kebawa "list="
-    salah narik metadata playlist-nya (judul salah, lambat, rawan 429).
+    Strip the "list" (and "index") parameters from a URL when it clearly points
+    to ONE specific video ("v=", /shorts/, /embed/, youtu.be) rather than a
+    pure playlist link. Without this, an ordinary video carrying "list="
+    wrongly pulls playlist metadata (wrong title, slow, prone to 429).
     """
     parts = urlsplit(url)
     pairs = parse_qsl(parts.query, keep_blank_values=True)
@@ -101,8 +101,8 @@ def _base_ydl_opts() -> dict:
     return {
         "quiet": True,
         "no_warnings": True,
-        # Alihkan noise mentah yt-dlp (baris ERROR:/WARNING:) ke file log,
-        # terminal hanya menampilkan pesan ramah via rich.
+        # Redirect raw yt-dlp noise (ERROR:/WARNING: lines) to the log file;
+        # the terminal only shows friendly messages via rich.
         "logger": get_ydl_logger(),
         "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
     }
@@ -116,8 +116,8 @@ def _with_cookies_note(text: str) -> str:
 
 
 def detect(url: str, cookies_browser: str | None = None, cookies_file: str | None = None) -> DetectedContent:
-    """Ekstrak info video YouTube dari URL tanpa mendownload."""
-    from core.utils import apply_cookie_opts  # noqa: PLC0415 - hindari circular import
+    """Extract YouTube video info from a URL without downloading."""
+    from core.utils import apply_cookie_opts  # noqa: PLC0415 - avoid circular import
 
     if not is_valid_url(url):
         raise DetectionError(t("err.not_youtube_url"))
@@ -137,7 +137,7 @@ def detect(url: str, cookies_browser: str | None = None, cookies_file: str | Non
         info = _extract(ydl_opts)
     except yt_dlp.utils.DownloadError as e:
         if has_cookies and classify_error(e) == "cookies":
-            # Cookies gagal dibaca (browser terkunci/DPAPI): coba tanpa cookies.
+            # Cookies unreadable (locked browser/DPAPI): retry without cookies.
             ydl_opts.pop("cookiesfrombrowser", None)
             ydl_opts.pop("cookiefile", None)
             try:

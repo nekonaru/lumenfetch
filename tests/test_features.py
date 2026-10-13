@@ -84,6 +84,12 @@ def test_read_batch_file_skips_comments(tmp_path):
     assert main.read_batch_file(f) == ["https://youtube.com/watch?v=1", "https://youtu.be/2"]
 
 
+def test_read_batch_file_strips_bom(tmp_path):
+    f = tmp_path / "batch.txt"
+    f.write_bytes(b"\xef\xbb\xbfhttps://youtube.com/watch?v=1\n")
+    assert main.read_batch_file(f) == ["https://youtube.com/watch?v=1"]
+
+
 def test_process_batch_sequential_counts(monkeypatch):
     calls = []
 
@@ -305,6 +311,97 @@ def test_ffmpeg_prefers_system(monkeypatch):
     assert ffmpeg.ensure() is True
 
 
+def test_self_update_check(monkeypatch):
+    from core import update_checker
+
+    monkeypatch.setattr(update_checker, "get_lumenfetch_latest", lambda: "9.9.9")
+    has_update, installed, latest = update_checker.check_self_update()
+    assert has_update is True
+    assert latest == "9.9.9"
+    monkeypatch.setattr(update_checker, "get_lumenfetch_latest", lambda: None)
+    assert update_checker.check_self_update()[0] is False
+
+
+def test_doctor_all_checks_structure():
+    from core import doctor
+
+    checks = doctor.run_all({})
+    names = [c.name for c in checks]
+    assert len(checks) == 8
+    assert all(isinstance(c.ok, bool) for c in checks)
+    assert any("ffmpeg" in n.lower() for n in names)
+
+
+def test_doctor_show_returns_bool(capsys):
+    from core import doctor
+    from core.doctor import DoctorCheck
+
+    assert doctor.show([DoctorCheck(name="X", ok=True)]) is True
+    assert doctor.show([DoctorCheck(name="X", ok=False, hint="fix it")]) is False
+    assert "fix it" in capsys.readouterr().out
+
+
+def test_sponsorblock_and_infojson_opts(tmp_path):
+    from core import downloader
+    from core.options import DownloadChoice
+
+    choice = DownloadChoice(
+        output_kind="video", quality="Best", fmt="mp4", sponsorblock=["sponsor", "intro"], write_info_json=True
+    )
+    opts = downloader._build_ydl_opts(choice, tmp_path / "v.mp4")
+    assert opts["sponsorblock_remove"] == ["sponsor", "intro"]
+    assert opts["writeinfojson"] is True
+
+
+def test_m3u_written_for_audio_playlist(tmp_path, monkeypatch):
+    from core import downloader
+    from core.options import DownloadChoice
+
+    class FakeYDL:
+        def __init__(self, opts):
+            self.opts = opts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def download(self, urls):
+            base = self.opts["outtmpl"].rsplit(".", 1)[0].replace("%(playlist_index,autonumber)d", "1")
+            from pathlib import Path as _P
+
+            _P(f"{base}.mp3").write_bytes(b"satu")
+            _P(base.replace("-1", "-2") + ".mp3").write_bytes(b"dua")
+
+    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", FakeYDL)
+
+    class FakePlaylistContent:
+        url = "https://www.youtube.com/playlist?list=PLxxxxxx"
+        platform = "YouTube"
+        title = "Playlist Lagu"
+        entries = [{"url": "v1"}, {"url": "v2"}]
+
+    choice = DownloadChoice(output_kind="audio", quality="Best", fmt="mp3", playlist_mode="all")
+    result = downloader.download(FakePlaylistContent(), choice, tmp_path, "%(title)s")
+
+    assert result.file_count == 2
+    m3u_files = list(tmp_path.glob("*.m3u"))
+    assert len(m3u_files) == 1
+    lines = m3u_files[0].read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2
+    assert all(line.endswith(".mp3") for line in lines)
+
+
+def test_cli_module_reexport():
+    import core.cli as cli_mod
+
+    assert main.parse_args is cli_mod.parse_args
+    assert main.build_choice_from_args is cli_mod.build_choice_from_args
+    assert main.read_batch_file is cli_mod.read_batch_file
+    assert main.apply_cli_overrides is cli_mod.apply_cli_overrides
+
+
 def test_i18n_default_english_and_switch(monkeypatch):
     from core import i18n
 
@@ -388,11 +485,13 @@ def test_base_opts_include_quiet_logger(tmp_path):
 def test_cli_version_exits_zero(monkeypatch, capsys):
     import sys
 
+    from core.constants import VERSION
+
     monkeypatch.setattr(sys, "argv", ["lumenfetch", "--version"])
     with pytest.raises(SystemExit) as exc_info:
         main.cli()
     assert exc_info.value.code == 0
-    assert "2.0.0" in capsys.readouterr().out
+    assert VERSION in capsys.readouterr().out
 
 
 def test_safe_io_never_raises():

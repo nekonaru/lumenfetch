@@ -351,3 +351,83 @@ def test_resolve_final_path_multi_item_finds_all_files(tmp_path):
     assert count == 2
     assert path.exists()
     assert size == len(b"satu") + len(b"dua-lebih-panjang")
+
+
+def test_parallel_same_title_gets_unique_names(tmp_path, monkeypatch):
+    """Regression: two parallel workers for the same title must not share one filename."""
+    import threading
+
+    class FakeYDL:
+        def __init__(self, opts):
+            self.opts = opts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def download(self, urls):
+            base = self.opts["outtmpl"].rsplit(".", 1)[0]
+            from pathlib import Path as _P
+
+            _P(f"{base}.mp3").write_bytes(b"audio-bytes")
+
+    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", FakeYDL)
+
+    class FakeContent:
+        url = "https://www.youtube.com/watch?v=abc"
+        platform = "YouTube"
+        title = "Judul Sama"
+        entries = []
+
+    results = []
+    errors = []
+
+    def worker():
+        try:
+            choice = DownloadChoice(output_kind="audio", quality="Best", fmt="mp3")
+            results.append(downloader.download(FakeContent(), choice, tmp_path, "%(title)s"))
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+
+    threads = [threading.Thread(target=worker) for _ in range(2)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+
+    assert not errors
+    assert len(results) == 2
+    assert results[0].filepath != results[1].filepath
+    assert results[0].filepath.exists() and results[1].filepath.exists()
+
+
+def test_failed_download_cleans_own_placeholder(tmp_path, monkeypatch):
+    class FakeYDL:
+        def __init__(self, opts):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def download(self, urls):
+            raise downloader.yt_dlp.utils.DownloadError("Private video")
+
+    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", FakeYDL)
+
+    class FakeContent:
+        url = "https://www.youtube.com/watch?v=abc"
+        platform = "YouTube"
+        title = "Judul Gagal"
+        entries = []
+
+    choice = DownloadChoice(output_kind="video", quality="Best", fmt="mp4")
+    with pytest.raises(downloader.DownloadFailed):
+        downloader.download(FakeContent(), choice, tmp_path, "%(title)s", max_retry=0)
+
+    leftovers = [p for p in tmp_path.iterdir() if p.is_file()]
+    assert leftovers == []

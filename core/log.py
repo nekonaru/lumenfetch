@@ -1,4 +1,4 @@
-"""log.py - Logging file terpusat (console tetap ramah via rich)."""
+"""log.py - Centralized file logging (console stays friendly via rich)."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ _configured = False
 
 
 def log_file_path() -> Path:
-    """Lokasi file log (sefolder dengan config user)."""
-    from core.utils import _user_data_dir  # noqa: PLC0415 - hindari circular import
+    """Log file location (same folder as the user config)."""
+    from core.utils import _user_data_dir  # noqa: PLC0415 - avoid circular import
 
     d = _user_data_dir()
     try:
@@ -23,7 +23,7 @@ def log_file_path() -> Path:
 
 
 def setup(verbose: bool = False) -> logging.Logger:
-    """Setup handler file + stderr. Aman dipanggil berkali-kali."""
+    """Set up file + stderr handlers. Safe to call multiple times."""
     global _configured
     logger = logging.getLogger(_LOGGER_NAME)
     level = logging.DEBUG if verbose else logging.INFO
@@ -38,7 +38,7 @@ def setup(verbose: bool = False) -> logging.Logger:
         logger.addHandler(fh)
     except OSError:
         pass
-    # Error ke stderr agar tidak hilang saat rich console di-redirect.
+    # Errors go to stderr so they are not lost when the rich console is redirected.
     sh = logging.StreamHandler(sys.stderr)
     sh.setLevel(logging.WARNING)
     sh.setFormatter(fmt)
@@ -52,9 +52,9 @@ def get_logger(name: str = _LOGGER_NAME) -> logging.Logger:
 
 
 def get_ydl_logger() -> logging.Logger:
-    """Logger khusus untuk yt-dlp: semua output mentahnya (termasuk baris
-    `ERROR:` yang tidak bisa dimatikan via `quiet`) dialihkan ke file log,
-    TIDAK ke terminal. Terminal hanya menampilkan pesan ramah via rich."""
+    """Dedicated logger for yt-dlp: all of its raw output (including
+    `ERROR:` lines that cannot be silenced via `quiet`) is redirected to the log file,
+    NOT to the terminal. The terminal only shows friendly messages via rich."""
     name = f"{_LOGGER_NAME}.ydl"
     logger = logging.getLogger(name)
     if getattr(logger, "_lumenfetch_configured", False):

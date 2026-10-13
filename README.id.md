@@ -31,7 +31,10 @@
 | 🎵 **Audio MP3** | Pilihan bitrate Best/320kbps/192kbps/128kbps |
 | 📜 **Playlist** | Default video pertama saja; `--playlist all` untuk semua sekaligus |
 | 💬 **Subtitle & metadata** | Download subtitle + embed ke MP4, opsional via flag/CLI |
+| 📃 **M3U otomatis** | Playlist audio (`--playlist all`) juga nulis file `.m3u` |
 | 🌍 **Tampilan EN/ID** | Bahasa CLI via `--ui-lang id`, `LUMENFETCH_LANG`, atau setting yang diingat |
+| 🩺 **Doctor** | `lumenfetch --doctor` mendiagnosa setup (ffmpeg, dep, cookies, jaringan) |
+| ⬆️ **Notice self-update** | Memberi tahu kalau ada lumenfetch lebih baru di PyPI |
 | 📋 **Auto-paste clipboard** | Kalau ada link valid di clipboard, langsung ditawarkan tanpa perlu paste manual - tidak akan nanya ulang isi clipboard yang sama berkali-kali |
 | 📊 **Progress bar real-time** | Kecepatan, ukuran, dan estimasi waktu tersisa lewat `rich` |
 | 📐 **Estimasi ukuran & waktu** | Muncul di menu pilih quality, dihitung dari data yt-dlp + kecepatan rata-rata download kamu sebelumnya |
@@ -278,10 +281,13 @@ lumenfetch "https://youtube.com/watch?v=..." -t video -f mp4 -q 720p -y
 | `--sub-langs` | Bahasa subtitle, dipisah koma (default: en,id) |
 | `--embed-subs` | Embed subtitle ke file MP4 |
 | `--embed-metadata` | Embed metadata (judul/artis) ke file hasil |
+| `--sponsorblock [cats...]` | Lewati segmen SponsorBlock (mis. `--sponsorblock sponsor intro outro`) |
+| `--write-info-json` | Simpan metadata video sebagai `.info.json` di sebelah file |
 | `--batch` | File teks berisi daftar URL (satu per baris) |
 | `--jobs N` | Paralel batch 1-4 (default 1) |
 | `--no-clipboard` | Jangan tawarkan isi clipboard |
 | `--ui-lang {en,id}` | Bahasa tampilan CLI (default `en`, diingat setelah dipilih) |
+| `--doctor` | Diagnosa setup (ffmpeg, dep, cookies, jaringan) lalu keluar |
 | `-y/--yes` | Lewati konfirmasi nama file |
 | `-v/--verbose` | Log detail ke file + console |
 | `--history` | Tampilkan riwayat lalu keluar |
@@ -364,6 +370,8 @@ lumenfetch/
 │   ├── constants.py           # Single source of truth (versi, format, batas)
 │   ├── errors.py              # Taxonomy error terpusat (klasifikasi + pesan ramah)
 │   ├── i18n.py                # String UI (default English, Indonesia via --ui-lang)
+│   ├── cli.py                 # Parsing argumen + bangun pilihan non-interaktif
+│   ├── doctor.py              # Diagnosa setup (ffmpeg, dep, cookies, jaringan)
 │   ├── ffmpeg.py              # Deteksi ffmpeg sistem dulu, bundled fallback
 │   ├── log.py                 # Logging file terpusat
 │   ├── downloader.py          # Download MP4 / ekstrak MP3 + resume + retry backoff

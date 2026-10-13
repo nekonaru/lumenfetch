@@ -1,9 +1,9 @@
-"""errors.py - Taxonomy error terpusat.
+"""errors.py - Centralized error taxonomy.
 
-Sebelumnya logic klasifikasi error duplikat di detector.py dan
-downloader.py dengan pola string yang bisa drift (mis. satu modul
-kenal "429", satunya tidak). Sekarang satu fungsi klasifikasi dipakai
-bersama, dengan pesan ramah yang konsisten.
+Error-classification logic used to be duplicated in detector.py and
+downloader.py with string patterns that could drift (e.g. one module
+recognized "429" while the other did not). Now a single classification
+function is shared, with consistent friendly messages.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from core.i18n import t
 
 
 class DetectionError(Exception):
-    """Error ramah untuk ditampilkan ke user (bukan traceback mentah)."""
+    """Friendly error for display to the user (not a raw traceback)."""
 
 
 class DownloadCancelled(Exception):
@@ -21,10 +21,10 @@ class DownloadCancelled(Exception):
 
 
 class DownloadFailed(Exception):
-    """Error fatal yang gak perlu di-retry (pesan sudah ramah)."""
+    """Fatal error that needs no retry (message is already friendly)."""
 
 
-# Kind yang dikenal classify_error().
+# Kinds known to classify_error().
 ERROR_KIND_CONNECTION = "connection"
 ERROR_KIND_PRIVATE = "private"
 ERROR_KIND_FORMAT = "format"
@@ -51,21 +51,21 @@ _KIND_TO_KEY = {
 
 
 def classify_error(exc: Exception) -> str:
-    """Klasifikasikan exception (terutama dari yt-dlp) jadi kind string."""
+    """Classify an exception (mainly from yt-dlp) into a kind string."""
     msg = str(exc).lower()
     if any(hint in msg for hint in CONNECTION_ERROR_HINTS):
         return ERROR_KIND_CONNECTION
     if "could not copy" in msg and "cookie" in msg:
-        # File cookies dikunci browser yang masih terbuka (yt-dlp #7271).
-        # Bukan URL rusak - harus ditangani khusus (coba tanpa cookies).
+        # Cookie file locked by a still-open browser (yt-dlp #7271).
+        # Not a broken URL - must be handled specially (retry without cookies).
         return ERROR_KIND_COOKIES
     if "failed to decrypt" in msg or "dpapi" in msg or "failed to load cookies" in msg:
-        # Cookies terenkripsi tak bisa didekripsi (yt-dlp #10927, umum di
-        # Edge/Chrome Windows) - sama: bukan URL rusak, fallback tanpa cookies.
+        # Encrypted cookies cannot be decrypted (yt-dlp #10927, common on
+        # Edge/Chrome for Windows) - likewise: not a broken URL, fall back without cookies.
         return ERROR_KIND_COOKIES
     if "unexpected response from webpage request" in msg or "confirm you are on the latest version" in msg:
-        # Challenge bot-check yang cuma lolos pakai impersonation + cookies,
-        # bukan URL rusak.
+        # Bot-check challenge that only passes with impersonation + cookies,
+        # not a broken URL.
         return ERROR_KIND_BLOCKED
     if "private" in msg or "login required" in msg or "login" in msg or "unavailable" in msg:
         return ERROR_KIND_PRIVATE
@@ -89,7 +89,7 @@ def _curl_cffi_available() -> bool:
 
 
 def blocked_message() -> str:
-    """Pesan blocked yang adaptif: sebut curl_cffi hanya bila belum terinstall."""
+    """Adaptive blocked message: mention curl_cffi only when it is not installed."""
     base = t("err.blocked")
     if not _curl_cffi_available():
         base += t("err.blocked_curl")
@@ -97,7 +97,7 @@ def blocked_message() -> str:
 
 
 def friendly_message(kind: str) -> str:
-    """Pesan ramah untuk kind hasil classify_error() (mengikuti bahasa aktif)."""
+    """Friendly message for a classify_error() kind (follows the active language)."""
     if kind == ERROR_KIND_BLOCKED:
         return blocked_message()
     key = _KIND_TO_KEY.get(kind, "err.unknown")
@@ -105,7 +105,7 @@ def friendly_message(kind: str) -> str:
 
 
 def detection_message(exc: Exception) -> str:
-    """Pesan deteksi: sama dengan friendly, tapi unknown -> URL YouTube tidak valid."""
+    """Detection message: same as friendly, but unknown -> invalid YouTube URL."""
     kind = classify_error(exc)
     if kind == ERROR_KIND_FORMAT:
         return t("err.no_video")
