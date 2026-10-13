@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
-lumenfetch = "main:main"
+lumenfetch = "main:cli"
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "pyinstaller"]

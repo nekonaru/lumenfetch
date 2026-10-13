@@ -9,6 +9,7 @@
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)
 ![Status](https://img.shields.io/badge/Status-Active-brightgreen?style=flat-square)
+![Tests](https://github.com/nekonaru/lumenfetch/actions/workflows/tests.yml/badge.svg)
 
 </div>
 
@@ -116,6 +117,12 @@ pip install -r requirements.txt
 > ```bash
 > pip install -r requirements.txt --break-system-packages
 > ```
+
+**3. (Opsional) Install sebagai command `lumenfetch`**
+```bash
+pip install -e .
+lumenfetch --version
+```
 
 ## 🖥️ Cara Pakai
 

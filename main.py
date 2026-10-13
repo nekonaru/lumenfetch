@@ -49,6 +49,22 @@ static_ffmpeg = _static_ffmpeg_mod
 _history_write_lock = threading.Lock()
 
 
+def _safe_io() -> None:
+    """Jangan crash (UnicodeEncodeError) di terminal non-UTF-8 / output di-pipe.
+
+    Emoji di pesan rich butuh UTF-8; di locale cp1252 (PowerShell lama, pipe)
+    print() mentah akan raise. Ganti error handler jadi "replace" sekali
+    di awal - satu baris pertahanan untuk SEMUA output CLI.
+    """
+    import sys as _sys
+
+    for stream in (_sys.stdout, _sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def _get_pyperclip():
     global pyperclip
     if pyperclip is None:
@@ -418,6 +434,7 @@ def process_batch(urls: list[str], config: dict, args: argparse.Namespace) -> di
 def main(argv: list[str] | None = None) -> int:
     # argv=None berarti mode interaktif (tidak baca sys.argv agar
     # pemanggilan programatik/test tidak kemakan argumen pytest).
+    _safe_io()
     args = parse_args([] if argv is None else argv)
     from core.log import setup as _setup_log  # noqa: PLC0415
 
@@ -526,10 +543,15 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-if __name__ == "__main__":
+def cli() -> None:
+    """Entry point console script `lumenfetch` (lihat pyproject [project.scripts])."""
     import sys as _sys
 
     try:
         raise SystemExit(main(_sys.argv[1:]))
     except KeyboardInterrupt:
         console.print("\n\n👋 Dipaksa keluar. Sampai jumpa!")
+
+
+if __name__ == "__main__":
+    cli()

@@ -338,3 +338,17 @@ def test_base_opts_include_quiet_logger(tmp_path):
     dl_opts = downloader._build_ydl_opts(DownloadChoice(output_kind="video", quality="Best", fmt="mp4"), tmp_path / "v.mp4")
     assert dl_opts["quiet"] is True
     assert hasattr(dl_opts["logger"], "error")
+
+
+def test_cli_version_exits_zero(monkeypatch, capsys):
+    import sys
+
+    monkeypatch.setattr(sys, "argv", ["lumenfetch", "--version"])
+    with pytest.raises(SystemExit) as exc_info:
+        main.cli()
+    assert exc_info.value.code == 0
+    assert "2.0.0" in capsys.readouterr().out
+
+
+def test_safe_io_never_raises():
+    main._safe_io()
