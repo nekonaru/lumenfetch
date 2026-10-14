@@ -432,6 +432,27 @@ def test_cli_module_reexport():
     assert main.apply_cli_overrides is cli_mod.apply_cli_overrides
 
 
+def test_cli_output_override_does_not_persist(tmp_path, monkeypatch):
+    """Regression: --output must not leak into the saved config via history saves."""
+    monkeypatch.setattr(utils, "CONFIG_PATH", tmp_path / "config.json")
+
+    fresh = utils.get_default_config()
+    original_folder = fresh["download_folder"]
+    utils.save_config(fresh)
+
+    config = utils.load_config()
+    args = main.parse_args(["--output", str(tmp_path / "Custom"), "https://youtube.com/watch?v=abc"])
+    session = main._session_from_config(config, args)
+
+    assert session["download_folder"] == str(tmp_path / "Custom")
+    assert config["download_folder"] == original_folder
+
+    # Simulate what process_url does at the end: history save must not persist the override.
+    utils.add_history_entry(config, {"title": "x"})
+    reloaded = utils.load_config()
+    assert reloaded["download_folder"] == original_folder
+
+
 def test_i18n_default_english_and_switch(monkeypatch):
     from core import i18n
 

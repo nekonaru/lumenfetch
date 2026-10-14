@@ -232,20 +232,49 @@ def _maybe_show_updates() -> None:
         options.show_self_update_notice(self_installed, self_latest)
 
 
+def _session_from_config(config: dict, args: argparse.Namespace) -> dict:
+    """Build an in-memory session copy with CLI overrides applied.
+
+    CLI flags (--output, --cookies, ...) must never leak into the persisted
+    config: add_history_entry() saves whatever dict it is given, so the
+    persisted object has to stay pristine.
+    """
+    session = dict(config)
+    if args.output:
+        session["download_folder"] = str(Path(args.output).expanduser())
+    if args.cookies is not None:
+        session["cookies_browser"] = None if str(args.cookies).lower() == "none" else str(args.cookies).lower()
+    if args.cookies_file is not None:
+        session["cookies_file"] = (
+            str(Path(args.cookies_file).expanduser()) if str(args.cookies_file).strip() else None
+        )
+    if args.max_retry is not None:
+        session["max_retry"] = max(0, int(args.max_retry))
+    if args.no_clipboard:
+        session["auto_paste"] = False
+    return session
+
+
 def process_url(
     url: str,
     config: dict,
     choice_override=None,
     auto_confirm: bool = False,
     playlist_mode: str | None = None,
+    runtime: dict | None = None,
 ) -> bool:
-    """Process a single YouTube URL. Return True on success."""
+    """Process a single YouTube URL. Return True on success.
+
+    `config` is the persisted object (history is saved into it); `runtime`
+    optionally carries temporary CLI overrides for everything else.
+    """
     from core.log import get_logger  # noqa: PLC0415
 
     log = get_logger()
+    rt = runtime or config
     console.print(t("main.detecting"))
     try:
-        content = detect(url, cookies_browser=config.get("cookies_browser"), cookies_file=config.get("cookies_file"))
+        content = detect(url, cookies_browser=rt.get("cookies_browser"), cookies_file=rt.get("cookies_file"))
     except DetectionError as e:
         console.print(f"[red]{e}[/red]")
         log.warning("detect gagal %s: %s", url, e)
@@ -266,8 +295,8 @@ def process_url(
 
     _ensure_ffmpeg()
 
-    output_folder = Path(config["download_folder"]).expanduser()
-    filename_preview = utils.build_filename(content.platform, content.title, choice.fmt, config["naming_template"])
+    output_folder = Path(rt["download_folder"]).expanduser()
+    filename_preview = utils.build_filename(content.platform, content.title, choice.fmt, rt["naming_template"])
 
     if not auto_confirm and not options.confirm_filename(filename_preview):
         return False
@@ -286,10 +315,10 @@ def process_url(
             content,
             choice,
             output_folder,
-            config["naming_template"],
-            max_retry=config.get("max_retry", 3),
-            cookies_browser=config.get("cookies_browser"),
-            cookies_file=config.get("cookies_file"),
+            rt["naming_template"],
+            max_retry=rt.get("max_retry", 3),
+            cookies_browser=rt.get("cookies_browser"),
+            cookies_file=rt.get("cookies_file"),
         )
         entry.update(
             {
@@ -329,8 +358,9 @@ def process_url(
     return bool(entry.get("success"))
 
 
-def process_batch(urls: list[str], config: dict, args: argparse.Namespace) -> dict:
+def process_batch(urls: list[str], config: dict, args: argparse.Namespace, runtime: dict | None = None) -> dict:
     """Process many URLs (sequential/parallel). Return a summary."""
+    rt = runtime or config
     jobs = max(1, min(int(getattr(args, "jobs", 1) or 1), BATCH_MAX_JOBS))
     results: dict = {"total": len(urls), "success": 0, "failed": 0}
 
@@ -342,26 +372,30 @@ def process_batch(urls: list[str], config: dict, args: argparse.Namespace) -> di
                 try:
                     content_probe = detect(
                         u,
-                        cookies_browser=config.get("cookies_browser"),
-                        cookies_file=config.get("cookies_file"),
+                        cookies_browser=rt.get("cookies_browser"),
+                        cookies_file=rt.get("cookies_file"),
                     )
                     choice = build_choice_from_args(content_probe, args)
                 except DetectionError as e:
                     console.print(f"[red]{u}: {e}[/red]")
                     choice = None
             if choice is not None:
-                return process_url(u, config, choice_override=choice, auto_confirm=True, playlist_mode=args.playlist)
+                return process_url(
+                    u, config, choice_override=choice, auto_confirm=True, playlist_mode=args.playlist, runtime=rt
+                )
             try:
                 probe = content_probe or detect(
                     u,
-                    cookies_browser=config.get("cookies_browser"),
-                    cookies_file=config.get("cookies_file"),
+                    cookies_browser=rt.get("cookies_browser"),
+                    cookies_file=rt.get("cookies_file"),
                 )
                 default_choice = build_choice_from_args(probe, args)
             except DetectionError as e:
                 console.print(f"[red]{u}: {e}[/red]")
                 return False
-            return process_url(u, config, choice_override=default_choice, auto_confirm=True, playlist_mode=args.playlist)
+            return process_url(
+                u, config, choice_override=default_choice, auto_confirm=True, playlist_mode=args.playlist, runtime=rt
+            )
         except Exception as e:  # noqa: BLE001
             console.print(f"[red]{u}: {e}[/red]")
             return False
@@ -403,16 +437,9 @@ def main(argv: list[str] | None = None) -> int:
         config["ui_lang"] = args.ui_lang
         utils.save_config(config)
     set_lang(resolve_lang(args.ui_lang, config))
-    if args.output:
-        config["download_folder"] = str(Path(args.output).expanduser())
-    if args.cookies is not None:
-        config["cookies_browser"] = None if str(args.cookies).lower() == "none" else str(args.cookies).lower()
-    if args.cookies_file is not None:
-        config["cookies_file"] = str(Path(args.cookies_file).expanduser()) if str(args.cookies_file).strip() else None
-    if args.max_retry is not None:
-        config["max_retry"] = max(0, int(args.max_retry))
-    if args.no_clipboard:
-        config["auto_paste"] = False
+    # Runtime copy carries CLI overrides; `config` stays pristine so history
+    # saves never persist temporary flags (e.g. --output) by accident.
+    session = _session_from_config(config, args)
 
     if args.history:
         options.show_history_table(config.get("history", []))
@@ -420,7 +447,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.doctor:
         options.show_header(VERSION)
-        ok = doctor.show(doctor.run_all(config))
+        ok = doctor.show(doctor.run_all(session))
         return 0 if ok else 1
 
     if args.batch:
@@ -433,7 +460,7 @@ def main(argv: list[str] | None = None) -> int:
             console.print(t("main.batch_empty"))
             return 1
         options.show_header(VERSION)
-        summary = process_batch(urls, config, args)
+        summary = process_batch(urls, config, args, runtime=session)
         console.print(t("main.batch_done", ok=summary["success"], total=summary["total"]))
         return 0 if summary["failed"] == 0 else 1
 
@@ -447,16 +474,18 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 content = detect(
                     args.url,
-                    cookies_browser=config.get("cookies_browser"),
-                    cookies_file=config.get("cookies_file"),
+                    cookies_browser=session.get("cookies_browser"),
+                    cookies_file=session.get("cookies_file"),
                 )
             except DetectionError as e:
                 console.print(f"[red]{e}[/red]")
                 return 1
             choice = build_choice_from_args(content, args)
-            ok = process_url(args.url, config, choice_override=choice, auto_confirm=True, playlist_mode=args.playlist)
+            ok = process_url(
+                args.url, config, choice_override=choice, auto_confirm=True, playlist_mode=args.playlist, runtime=session
+            )
             return 0 if ok else 1
-        process_url(args.url, config, playlist_mode=args.playlist)
+        process_url(args.url, config, playlist_mode=args.playlist, runtime=session)
         return 0
 
     options.show_header(VERSION)
@@ -465,7 +494,7 @@ def main(argv: list[str] | None = None) -> int:
     last_clip_prompted: str | None = None
 
     while True:
-        clip_url, last_clip_prompted = try_clipboard_url(config, last_clip_prompted)
+        clip_url, last_clip_prompted = try_clipboard_url(session, last_clip_prompted)
 
         raw = clip_url or Prompt.ask(t("main.url_prompt")).strip()
 
@@ -477,25 +506,26 @@ def main(argv: list[str] | None = None) -> int:
             continue
         if raw.lower() == "settings":
             config = handle_settings(config)
+            session = _session_from_config(config, args)
             continue
         if raw.lower() == "help":
             options.show_help()
             continue
         if raw.lower() == "doctor":
-            doctor.show(doctor.run_all(config))
+            doctor.show(doctor.run_all(session))
             continue
         if not raw:
             continue
 
         try:
-            process_url(raw, config)
+            process_url(raw, config, runtime=session)
         except Exception as e:  # noqa: BLE001
             console.print(t("main.unexpected", e=e))
 
         nxt = options.ask_again_or_url()
         if isinstance(nxt, str):
             try:
-                process_url(nxt, config)
+                process_url(nxt, config, runtime=session)
             except Exception as e:  # noqa: BLE001
                 console.print(t("main.unexpected", e=e))
             continue
