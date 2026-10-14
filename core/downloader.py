@@ -6,6 +6,8 @@ with Rich progress hook, automatic resume, and exponential backoff retry.
 
 from __future__ import annotations
 
+import os
+import re
 import threading
 import time
 from dataclasses import dataclass
@@ -72,9 +74,14 @@ _HEIGHT_FILTERS = {    "Best": "",
 
 _AUDIO_KBPS = {"Best": "0", "320kbps": "320", "192kbps": "192", "128kbps": "128"}
 
-# Lock for duplicate resolution + placeholder reservation, so parallel
-# batch workers downloading the same title don't pick the same filename.
+# Lock + in-memory set for duplicate resolution, so parallel batch
+# workers downloading the same title don't pick the same filename.
+# NOTE: reservation is memory-only on purpose. An earlier version created
+# an empty placeholder FILE, but yt-dlp treats an existing dest file as
+# "already downloaded" and finishes instantly with 0 bytes (then the
+# thumbnail postprocessor crashes on it). Never pre-create the dest.
 _resolve_lock = threading.Lock()
+_reserved_keys: set[str] = set()
 
 
 @dataclass
@@ -142,33 +149,44 @@ def backoff_delay(attempt: int) -> float:
     return capped + random.uniform(0, RETRY_JITTER_SECONDS)
 
 
-def _reserve_dest(path: Path, multi_item: bool = False) -> tuple[Path, bool]:
-    """Resolve a duplicate-free dest and reserve it with an empty placeholder.
+def _reserve_key(dest: Path, multi_item: bool) -> str:
+    norm = os.path.normcase(os.path.abspath(dest if not multi_item else dest.with_suffix("")))
+    return norm
 
-    The lock + placeholder close a race in parallel batch mode where two
-    workers for the same title both resolve to the same filename before
-    either file exists on disk. Returns (dest, reserved): reserved is True
-    only when this call created the placeholder (so only it may clean up).
+
+def _bump_suffix(dest: Path) -> Path:
+    """X.mp4 -> X(1).mp4 -> X(2).mp4 (same scheme as resolve_duplicate)."""
+    stem, suffix = dest.stem, dest.suffix
+    m = re.search(r"\((\d+)\)$", stem)
+    if m:
+        base = stem[: m.start()]
+        n = int(m.group(1)) + 1
+    else:
+        base, n = stem, 1
+    return dest.with_name(f"{base}({n}){suffix}")
+
+
+def _reserve_dest(path: Path, multi_item: bool = False) -> tuple[Path, str | None]:
+    """Resolve a duplicate-free dest and reserve it in-memory (no files created).
+
+    Returns (dest, token). Pass the token to _release_reservation() when done.
     """
     with _resolve_lock:
         dest = resolve_duplicate(path, multi_item=multi_item)
-        try:
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.touch(exist_ok=False)
-            return dest, True
-        except OSError:
-            return dest, False
+        guard = 0
+        while _reserve_key(dest, multi_item) in _reserved_keys and guard < 1000:
+            dest = resolve_duplicate(_bump_suffix(dest), multi_item=multi_item)
+            guard += 1
+        token: str | None = _reserve_key(dest, multi_item)
+        _reserved_keys.add(token)
+        return dest, token
 
 
-def _release_placeholder(dest: Path, reserved: bool) -> None:
-    """Remove our own reservation placeholder if it is still empty."""
-    if not reserved:
+def _release_reservation(token: str | None) -> None:
+    if token is None:
         return
-    try:
-        if dest.exists() and dest.stat().st_size == 0:
-            dest.unlink()
-    except OSError:
-        pass
+    with _resolve_lock:
+        _reserved_keys.discard(token)
 
 
 def download(
@@ -192,7 +210,7 @@ def download(
     # force the first entry when in single mode.
     force_single_item = not playlist_all and entries_count > 1
 
-    dest, reserved = _reserve_dest(output_folder / filename, multi_item=playlist_all)
+    dest, token = _reserve_dest(output_folder / filename, multi_item=playlist_all)
 
     ydl_opts = _build_ydl_opts(
         choice,
@@ -255,14 +273,16 @@ def download(
             if salvaged is not None:
                 path, size, count = salvaged
                 console.print(f"[yellow]{t('dl.pp_warning')}[/yellow]")
-                _cleanup_failed_dest(dest, reserved, playlist_all, keep={path})
+                _cleanup_failed_dest(dest, playlist_all, keep={path})
+                _release_reservation(token)
                 return DownloadResult(
                     filepath=path,
                     size_bytes=size,
                     elapsed_seconds=time.time() - start_time,
                     file_count=count,
                 )
-        _cleanup_failed_dest(dest, reserved, playlist_all)
+        _cleanup_failed_dest(dest, playlist_all)
+        _release_reservation(token)
         raise
 
     elapsed = time.time() - start_time
@@ -271,12 +291,14 @@ def download(
         # yt-dlp reported success but left nothing (or an empty file):
         # expired stream URLs typically end like this. Never report these
         # as success, and don't leave 0-byte litter behind.
-        _cleanup_failed_dest(dest, reserved, playlist_all)
+        _cleanup_failed_dest(dest, playlist_all)
+        _release_reservation(token)
         raise DownloadFailed(t("dl.empty_result"))
 
     if choice.output_kind == "audio" and playlist_all and file_count > 1:
         _write_m3u_playlist(dest)
 
+    _release_reservation(token)
     return DownloadResult(filepath=final_path, size_bytes=total_size, elapsed_seconds=elapsed, file_count=file_count)
 
 
@@ -305,14 +327,12 @@ def _safe_size(p: Path) -> int:
         return 0
 
 
-def _cleanup_failed_dest(dest: Path, reserved: bool, multi_item: bool = False, keep: frozenset | set = frozenset()) -> None:
-    """Remove our placeholder, 0-byte results, and thumbnail leftovers of a failed download.
+def _cleanup_failed_dest(dest: Path, multi_item: bool = False, keep: frozenset | set = frozenset()) -> None:
+    """Remove 0-byte results and thumbnail leftovers of a failed download.
 
-    Never touches non-empty media files outside `keep`... in fact never
-    touches non-empty media at all: only our own empty placeholder, 0-byte
-    stem files, and stem thumbnail litter from crashed runs.
+    Never touches non-empty media files: only 0-byte stem files and stem
+    thumbnail litter from crashed runs.
     """
-    _release_placeholder(dest, reserved)
     try:
         if multi_item:
             candidates = find_indexed_files(dest)
@@ -404,7 +424,10 @@ def _build_ydl_opts(
         "retries": 0,  # connection retries are handled manually (backoff) in download()
         "fragment_retries": 3,
         "continuedl": True,  # resume partial files (.part)
-        "skip_unavailable_fragments": False,
+        # NOTE: do NOT set skip_unavailable_fragments=False here. yt-dlp's
+        # default (True) skips dead fragments in flaky SABR/HLS sessions;
+        # aborting on the first bad fragment turns one hiccup into a 0-byte
+        # failure (seen live with ConnectionResetError mid-fragments).
         # Same as detector._base_ydl_opts: a JS runtime is needed for signature challenges.
         "js_runtimes": {"node": {}, "deno": {}, "bun": {}, "quickjs": {}},
         "noplaylist": not playlist_all,
