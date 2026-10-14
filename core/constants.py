@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-VERSION = "2.1.1"
+VERSION = "2.1.2"
 
 # --- Config ---
 HISTORY_LIMIT = 20

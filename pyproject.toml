@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lumenfetch"
-version = "2.1.1"
+version = "2.1.2"
 description = "YouTube downloader for the terminal (MP4 & MP3)."
 readme = "README.md"
 requires-python = ">=3.9"
