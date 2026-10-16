@@ -39,7 +39,7 @@
 | 📊 **Real-time progress** | Speed, size, and ETA via `rich` |
 | 📐 **Size & time estimates** | Shown next to every quality option, computed from yt-dlp data + your own past download speeds |
 | 🔄 **Auto-retry & resume** | Connection errors retried with exponential backoff (default 3x); partial `.part` files resumed, not restarted |
-| 🗂 **Download history** | Last 20 entries, viewable anytime with the `history` command |
+| 🗂 **Download history** | Last 20 entries, viewable anytime with the `history` command (`history clear` wipes it) |
 | ⚙️ **Persistent settings** | Download folder, max retry, auto-paste, and naming template remembered |
 | 🍪 **Browser/file cookies** | Optional, for age-restricted or private videos - from Chrome/Firefox/Edge/etc. or a `cookies.txt` file |
 | 🧼 **Safe filenames** | Illegal characters sanitized, duplicates get `(1)`, `(2)` suffixes |
@@ -160,44 +160,44 @@ lumenfetch
 
 **Paste a YouTube URL when asked:**
 ```
-Masukkan URL YouTube (q: keluar, history, settings, help): https://youtube.com/watch?v=...
+Enter YouTube URL (q: quit, history, settings, help): https://youtube.com/watch?v=...
 ```
 
 If there is a valid link in your clipboard, Lumenfetch offers it first - just answer `y` to use it.
 
 **Pick an output type:**
 ```
-Pilih tipe output:
+Choose output type:
   [1] Video (MP4)
   [2] Audio (MP3)
 ```
 
 **Pick a quality (size & ETA estimates included):**
 ```
-Pilih Quality:
-  [1] Best   (default)  (~147.8 MB, ~31 detik)
-  [2] 1080p              (~147.8 MB, ~31 detik)
-  [3] 720p               (~81.1 MB, ~17 detik)
-  [4] 480p               (~42.9 MB, ~9 detik)
+Choose Quality:
+  [1] Best   (default)  (~147.8 MB, ~31 seconds)
+  [2] 1080p              (~147.8 MB, ~31 seconds)
+  [3] 720p               (~81.1 MB, ~17 seconds)
+  [4] 480p               (~42.9 MB, ~9 seconds)
 ```
 
 **Confirm the filename, then the download runs** with a real-time progress bar (speed, size, ETA). Press `Ctrl+C` anytime to cancel safely.
 
 **Done! 🎉**
 ```
-✅ Selesai!
+✅ Done!
    File  : C:\Users\user\Downloads\YouTube_Lofi-Hip-Hop-Radio_2026.mp4
-   Ukuran: 81.1 MB
-   Waktu : 17 detik
+   Size: 81.1 MB
+   Time : 17 seconds
 ```
 
-## ↻ Resume Otomatis
+## ↻ Automatic Resume
 
 If a download stops halfway (connection drops, terminal closed), the partial `.part` file stays on disk.
 
 Just run the same URL again and yt-dlp **resumes** from where it stopped instead of starting over. Connection errors are also retried automatically with exponential backoff (2s, 4s, 8s... max 30s).
 
-## ⚙️ Preferensi Tersimpan
+## ⚙️ Saved Preferences
 
 Your download folder, max retry, auto-paste, naming template, and cookies choice are saved automatically in your user config dir and reused as defaults next session:
 
@@ -243,7 +243,7 @@ Age-restricted or private videos need a login. If you hit such errors, enable on
 
 **A. Browser cookies:**
 1. Open Lumenfetch, type `settings`
-2. Pick `[5] Pakai cookies dari browser/file`
+2. Pick `[5] Use browser/file cookies`
 3. Pick the browser where you're logged into YouTube (Chrome/Firefox/Edge/Brave/Opera/Vivaldi/Safari)
 
 > **Important:** the chosen browser must be **fully closed** while downloading (its cookie file is locked while open - the error looks like `Could not copy ... cookie database`). Check Task Manager and kill all its processes (Edge/Chrome often keep running in the background).
@@ -251,7 +251,7 @@ Age-restricted or private videos need a login. If you hit such errors, enable on
 **B. Cookie file (most reliable, recommended if cookie errors persist):**
 1. Install the **"Get cookies.txt LOCALLY"** extension (Chrome/Edge/Firefox)
 2. Open youtube.com (make sure you're logged in), click the extension → **Export** → save e.g. `D:\cookies.txt`
-3. In Lumenfetch: `settings` → `[5]` → `[1] Nonaktifkan` → enter the cookie file path
+3. In Lumenfetch: `settings` → `[5]` → `[1] Disable` → enter the cookie file path
 4. Or via CLI: `lumenfetch <URL> --cookies-file D:\cookies.txt`
 
 ## 🤖 Non-Interactive Mode (Scripting/Automation)

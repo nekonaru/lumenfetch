@@ -39,7 +39,7 @@
 | 📊 **Progress bar real-time** | Kecepatan, ukuran, dan estimasi waktu tersisa lewat `rich` |
 | 📐 **Estimasi ukuran & waktu** | Muncul di menu pilih quality, dihitung dari data yt-dlp + kecepatan rata-rata download kamu sebelumnya |
 | 🔄 **Auto-retry & resume** | Error koneksi dicoba ulang otomatis dengan backoff (default 3x); file parsial `.part` dilanjutkan, bukan diulang dari awal |
-| 🗂 **Riwayat download** | 20 entri terakhir tersimpan, bisa dilihat kapan saja lewat command `history` |
+| 🗂 **Riwayat download** | 20 entri terakhir tersimpan, bisa dilihat kapan saja lewat command `history` (`history clear` menghapusnya) |
 | ⚙️ **Pengaturan persisten** | Folder download, max retry, auto-paste, dan naming template diingat |
 | 🍪 **Cookies browser/file** | Opsional, buat video age-restricted/private - dari Chrome/Firefox/Edge/dll atau file `cookies.txt` |
 | 🧼 **Nama file aman** | Karakter ilegal disanitasi, duplikat otomatis dikasih suffix `(1)`, `(2)`, dst |

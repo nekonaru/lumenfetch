@@ -104,7 +104,10 @@ def test_process_batch_sequential_counts(monkeypatch):
     monkeypatch.setattr(main, "detect", fake_detect)
     args = main.parse_args(["--jobs", "1"])
     summary = main.process_batch(["https://x.test/good", "https://x.test/bad"], utils.get_default_config(), args)
-    assert summary == {"total": 2, "success": 1, "failed": 1}
+    assert summary["total"] == 2
+    assert summary["success"] == 1
+    assert summary["failed"] == 1
+    assert summary["failed_urls"] == ["https://x.test/bad"]
 
 
 def test_user_data_dir_and_migration(tmp_path, monkeypatch):
@@ -547,3 +550,140 @@ def test_cli_version_exits_zero(monkeypatch, capsys):
 
 def test_safe_io_never_raises():
     main._safe_io()
+
+
+def test_batch_detect_failure_printed_once(monkeypatch, tmp_path, capsys):
+    """A bad batch URL reports exactly one error line (no duplicate detect)."""
+    monkeypatch.setattr(utils, "CONFIG_PATH", tmp_path / "config.json")
+
+    def fake_detect(url, cookies_browser=None, cookies_file=None):
+        raise main.DetectionError("nope")
+
+    monkeypatch.setattr(main, "detect", fake_detect)
+    args = main.parse_args(["--jobs", "1"])
+    summary = main.process_batch(["https://x.test/bad"], utils.get_default_config(), args)
+
+    assert summary["failed"] == 1
+    assert summary["failed_urls"] == ["https://x.test/bad"]
+    out = capsys.readouterr().out
+    assert out.count("https://x.test/bad") == 1
+
+
+def test_process_url_skips_redetect_with_content_override(monkeypatch, tmp_path):
+    from core.detector import DetectedContent
+
+    calls = []
+
+    def fake_detect(url, cookies_browser=None, cookies_file=None):
+        calls.append(url)
+        return DetectedContent(url=url, title="T")
+
+    monkeypatch.setattr(main, "detect", fake_detect)
+    monkeypatch.setattr(main.options, "show_content_panel", lambda c: None)
+    monkeypatch.setattr(main.options, "confirm_filename", lambda filename: False)
+    monkeypatch.setattr(
+        main.options,
+        "resolve_choice",
+        lambda content, avg_speed_bps=None: DownloadChoice(output_kind="video", fmt="mp4"),
+    )
+
+    content = DetectedContent(url="https://youtube.com/watch?v=x", title="T")
+    main.process_url("https://youtube.com/watch?v=x", utils.get_default_config(), content_override=content)
+
+    assert calls == []
+
+
+def test_interactive_history_clear(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(utils, "CONFIG_PATH", tmp_path / "config.json")
+    monkeypatch.setattr(main, "try_clipboard_url", lambda config, last: (None, last))
+    answers = iter(["history clear", "q"])
+    monkeypatch.setattr(main.Prompt, "ask", lambda *a, **k: next(answers))
+    monkeypatch.setattr(main.Confirm, "ask", lambda *a, **k: True)
+    monkeypatch.setattr(main.options, "show_header", lambda version: None)
+    monkeypatch.setattr(main.update_checker, "check_for_update", lambda: (False, "", None))
+    monkeypatch.setattr(main.update_checker, "check_self_update", lambda: (False, "", None))
+
+    config = utils.get_default_config()
+    config["history"] = [{"title": "a"}]
+    utils.save_config(config)
+
+    assert main.main([]) == 0
+    assert utils.load_config()["history"] == []
+    assert "history cleared" in capsys.readouterr().out.lower()
+
+
+def test_maybe_show_updates_runs_checks_in_parallel(monkeypatch):
+    import threading
+
+    entered = []
+    release = threading.Event()
+
+    def slow_ytdlp():
+        entered.append("ytdlp")
+        release.wait(5)
+        return (False, "x", None)
+
+    def slow_self():
+        entered.append("self")
+        release.wait(5)
+        return (False, "x", None)
+
+    def release_soon():
+        import time as _t
+
+        _t.sleep(0.3)
+        release.set()
+
+    threading.Thread(target=release_soon).start()
+    monkeypatch.setattr(main.update_checker, "check_for_update", slow_ytdlp)
+    monkeypatch.setattr(main.update_checker, "check_self_update", slow_self)
+
+    import time as _t2
+
+    start = _t2.time()
+    main._maybe_show_updates()
+    elapsed = _t2.time() - start
+
+    assert sorted(entered) == ["self", "ytdlp"]
+    assert elapsed < 5  # sequential would block on the first check
+
+
+def test_settings_change_language(monkeypatch):
+    from core.i18n import get_lang
+
+    menu_choices = iter(["6", "8"])
+    monkeypatch.setattr(main.options, "show_settings_menu", lambda config: next(menu_choices))
+    monkeypatch.setattr(main.Prompt, "ask", lambda *a, **k: "2")
+    monkeypatch.setattr(main.utils, "save_config", lambda config: None)
+
+    config = utils.get_default_config()
+    main.handle_settings(config)
+
+    assert config["ui_lang"] == "id"
+    assert get_lang() == "id"
+
+
+def test_settings_cookies_preserves_file_when_browser_picked(monkeypatch):
+    menu_choices = iter(["5", "8"])
+    monkeypatch.setattr(main.options, "show_settings_menu", lambda config: next(menu_choices))
+    monkeypatch.setattr(main.options, "ask_cookies_browser", lambda: "chrome")
+    monkeypatch.setattr(main.utils, "save_config", lambda config: None)
+
+    config = utils.get_default_config()
+    config["cookies_file"] = "C:/cookies.txt"
+    main.handle_settings(config)
+
+    assert config["cookies_browser"] == "chrome"
+    assert config["cookies_file"] == "C:/cookies.txt"
+
+
+def test_version_sync_pyproject():
+    import re
+    from pathlib import Path as _P
+
+    from core.constants import VERSION
+
+    text = (_P("pyproject.toml")).read_text(encoding="utf-8")
+    match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
+    assert match is not None
+    assert match.group(1) == VERSION

@@ -259,7 +259,12 @@ def show_help() -> None:
 
 
 def show_settings_menu(config: dict) -> str:
-    cookies_status = config.get("cookies_browser") or config.get("cookies_file") or "none"
+    browser = config.get("cookies_browser")
+    cookie_file = config.get("cookies_file")
+    if browser and cookie_file:
+        cookies_status = f"{browser} + {cookie_file}"
+    else:
+        cookies_status = browser or cookie_file or "none"
     console.print(t("set.title"))
     console.print(f"  [1] {t('set.folder')}  {t('set.current', v=config['download_folder'])}")
     console.print(f"  [2] {t('set.retry')}  {t('set.current', v=config['max_retry'])}")
@@ -267,9 +272,10 @@ def show_settings_menu(config: dict) -> str:
     console.print(f"  [3] {t('set.autopaste')}  {t('set.current', v=on_off)}")
     console.print(f"  [4] {t('set.template')}  {t('set.current', v=config['naming_template'])}")
     console.print(f"  [5] {t('set.cookies')}  {t('set.current', v=cookies_status)}")
-    console.print(f"  [6] {t('set.reset')}")
-    console.print(f"  [7] {t('set.back')}")
-    return Prompt.ask("→", default="7")
+    console.print(f"  [6] {t('set.language')}  {t('set.current', v=config.get('ui_lang', 'en'))}")
+    console.print(f"  [7] {t('set.reset')}")
+    console.print(f"  [8] {t('set.back')}")
+    return Prompt.ask("→", default="8")
 
 
 def ask_cookies_browser() -> str | None:

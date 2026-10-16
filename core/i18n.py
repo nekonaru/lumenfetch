@@ -59,6 +59,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "hist.col_format": "Format",
         "hist.col_size": "Size",
         "hist.col_status": "Status",
+        "hist.clear_confirm": "Clear all {n} history entries?",
+        "hist.cleared": "History cleared.",
         "help.title": "📖 Lumenfetch Help",
         "help.text": (
             "[bold]AVAILABLE COMMANDS[/bold]\n"
@@ -81,6 +83,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "set.autopaste": "Toggle clipboard auto-paste",
         "set.template": "Change naming template",
         "set.cookies": "Use browser/file cookies",
+        "set.language": "Display language",
+        "set.current_mark": "(current)",
         "set.reset": "Reset to defaults",
         "set.back": "Back",
         "set.current": "[dim](current: {v})[/dim]",
@@ -106,6 +110,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "main.failed": "[red]❌ Download failed: {e}[/red]",
         "main.unexpected": "[red]❌ Unexpected error: {e}[/red]",
         "main.batch_done": "\nBatch finished: {ok}/{total} succeeded.",
+        "main.batch_failed_urls": "Failed URLs:",
         "main.batch_empty": "[yellow]Batch file is empty.[/yellow]",
         "main.batch_read_fail": "[red]Failed to read batch file: {e}[/red]",
         "main.warn_single": (
@@ -229,6 +234,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "hist.col_format": "Format",
         "hist.col_size": "Ukuran",
         "hist.col_status": "Status",
+        "hist.clear_confirm": "Hapus semua {n} entri riwayat?",
+        "hist.cleared": "Riwayat dihapus.",
         "help.title": "📖 Lumenfetch Help",
         "help.text": (
             "[bold]COMMAND TERSEDIA[/bold]\n"
@@ -251,6 +258,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "set.autopaste": "Toggle auto-paste clipboard",
         "set.template": "Ganti naming template",
         "set.cookies": "Pakai cookies dari browser/file",
+        "set.language": "Bahasa tampilan",
+        "set.current_mark": "(saat ini)",
         "set.reset": "Reset ke default",
         "set.back": "Kembali",
         "set.current": "[dim](saat ini: {v})[/dim]",
@@ -276,6 +285,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "main.failed": "[red]❌ Gagal download: {e}[/red]",
         "main.unexpected": "[red]❌ Terjadi kesalahan tak terduga: {e}[/red]",
         "main.batch_done": "\nBatch selesai: {ok}/{total} sukses.",
+        "main.batch_failed_urls": "URL yang gagal:",
         "main.batch_empty": "[yellow]Batch file kosong.[/yellow]",
         "main.batch_read_fail": "[red]Gagal baca batch file: {e}[/red]",
         "main.warn_single": (

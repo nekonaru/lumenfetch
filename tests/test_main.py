@@ -121,7 +121,7 @@ def test_handle_settings_expands_tilde_in_folder_path(monkeypatch, tmp_path):
     ke-resolve ke home folder-nya, bukan diperlakukan sebagai nama folder
     relatif literal bernama "~" di dalam folder project.
     """
-    menu_choices = iter(["1", "7"])
+    menu_choices = iter(["1", "8"])
     monkeypatch.setattr(main.options, "show_settings_menu", lambda config: next(menu_choices))
     monkeypatch.setattr(main.Prompt, "ask", lambda *a, **k: "~/Documents/MyDownloads")
     monkeypatch.setattr(main.utils, "save_config", lambda config: None)
@@ -134,7 +134,7 @@ def test_handle_settings_expands_tilde_in_folder_path(monkeypatch, tmp_path):
 
 
 def test_handle_settings_accepts_absolute_path_unchanged(monkeypatch, tmp_path):
-    menu_choices = iter(["1", "7"])
+    menu_choices = iter(["1", "8"])
     monkeypatch.setattr(main.options, "show_settings_menu", lambda config: next(menu_choices))
     monkeypatch.setattr(main.Prompt, "ask", lambda *a, **k: str(tmp_path / "CustomFolder"))
     monkeypatch.setattr(main.utils, "save_config", lambda config: None)

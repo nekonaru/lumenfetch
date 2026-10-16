@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 from rich.console import Console
-from rich.prompt import Prompt
+from rich.prompt import Confirm, Prompt
 
 from core import doctor, options, update_checker, utils
 from core.cli import apply_cli_overrides, build_choice_from_args, parse_args, read_batch_file
@@ -143,11 +143,12 @@ def handle_settings(config: dict) -> dict:
         "3": _settings_toggle_autopaste,
         "4": _settings_change_template,
         "5": _settings_change_cookies,
-        "6": _settings_reset,
+        "6": _settings_change_language,
+        "7": _settings_reset,
     }
     while True:
         choice = options.show_settings_menu(config)
-        if choice == "7":
+        if choice == "8":
             return config
         handler = handlers.get(choice)
         if handler is None:
@@ -183,15 +184,36 @@ def _settings_change_template(config: dict) -> None:
 
 
 def _settings_change_cookies(config: dict) -> None:
-    config["cookies_browser"] = options.ask_cookies_browser()
-    if not config["cookies_browser"]:
+    picked = options.ask_cookies_browser()
+    if picked:
+        # Keep an existing cookie file as fallback (file wins at runtime);
+        # only replace the browser choice itself.
+        config["cookies_browser"] = picked
+    else:
+        config["cookies_browser"] = None
         raw = Prompt.ask(
             t("main.cookiefile_prompt"),
             default=config.get("cookies_file") or "",
         ).strip()
         config["cookies_file"] = raw or None
-    else:
-        config["cookies_file"] = None
+    utils.save_config(config)
+
+
+def _settings_change_language(config: dict) -> None:
+    from core.i18n import SUPPORTED_LANGS, get_lang, set_lang  # noqa: PLC0415
+
+    console.print(t("set.language"))
+    for i, code in enumerate(SUPPORTED_LANGS, start=1):
+        mark = f"  {t('set.current_mark')}" if code == get_lang() else ""
+        console.print(f"  [{i}] {code}{mark}")
+    raw = Prompt.ask("→", default="1")
+    try:
+        idx = int(str(raw).strip()) - 1
+        picked = SUPPORTED_LANGS[idx]
+    except (ValueError, TypeError, IndexError):
+        return
+    config["ui_lang"] = picked
+    set_lang(picked)
     utils.save_config(config)
 
 
@@ -216,18 +238,27 @@ def _save_history_threadsafe(config: dict, entry: dict) -> None:
 
 
 def _maybe_show_updates() -> None:
-    """yt-dlp + self update notices. Failures are silent by design."""
-    try:
-        has_update, installed_version, latest_version = update_checker.check_for_update()
-    except Exception:  # noqa: BLE001
-        has_update, installed_version, latest_version = False, "", None
+    """yt-dlp + self update notices, checked in parallel. Failures are silent by design."""
+    results: dict = {}
+
+    def _run(name: str, fn) -> None:
+        try:
+            results[name] = fn()
+        except Exception:  # noqa: BLE001
+            results[name] = (False, "", None)
+
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        futs = [
+            ex.submit(_run, "ytdlp", update_checker.check_for_update),
+            ex.submit(_run, "self", update_checker.check_self_update),
+        ]
+        for fut in as_completed(futs):
+            fut.result()
+
+    has_update, installed_version, latest_version = results.get("ytdlp", (False, "", None))
     if has_update and latest_version:
         options.show_update_notice(installed_version, latest_version)
-    try:
-        self_update, self_installed, self_latest = update_checker.check_self_update()
-    except Exception:  # noqa: BLE001
-        self_update, self_latest = False, None
-        self_installed = VERSION
+    self_update, self_installed, self_latest = results.get("self", (False, VERSION, None))
     if self_update and self_latest:
         options.show_self_update_notice(self_installed, self_latest)
 
@@ -262,23 +293,28 @@ def process_url(
     auto_confirm: bool = False,
     playlist_mode: str | None = None,
     runtime: dict | None = None,
+    content_override=None,
 ) -> bool:
     """Process a single YouTube URL. Return True on success.
 
     `config` is the persisted object (history is saved into it); `runtime`
     optionally carries temporary CLI overrides for everything else.
+    Pass `content_override` to skip re-detection (batch mode already probed).
     """
     from core.log import get_logger  # noqa: PLC0415
 
     log = get_logger()
     rt = runtime or config
-    console.print(t("main.detecting"))
-    try:
-        content = detect(url, cookies_browser=rt.get("cookies_browser"), cookies_file=rt.get("cookies_file"))
-    except DetectionError as e:
-        console.print(f"[red]{e}[/red]")
-        log.warning("detect gagal %s: %s", url, e)
-        return False
+    if content_override is not None:
+        content = content_override
+    else:
+        console.print(t("main.detecting"))
+        try:
+            content = detect(url, cookies_browser=rt.get("cookies_browser"), cookies_file=rt.get("cookies_file"))
+        except DetectionError as e:
+            console.print(f"[red]{e}[/red]")
+            log.warning("detect gagal %s: %s", url, e)
+            return False
 
     options.show_content_panel(content)
 
@@ -362,39 +398,28 @@ def process_batch(urls: list[str], config: dict, args: argparse.Namespace, runti
     """Process many URLs (sequential/parallel). Return a summary."""
     rt = runtime or config
     jobs = max(1, min(int(getattr(args, "jobs", 1) or 1), BATCH_MAX_JOBS))
-    results: dict = {"total": len(urls), "success": 0, "failed": 0}
+    results: dict = {"total": len(urls), "success": 0, "failed": 0, "failed_urls": []}
 
     def _one(u: str) -> bool:
         try:
-            content_probe = None
-            choice = None
-            if args.output_type or args.fmt or args.quality or args.yes or args.playlist or args.subs:
-                try:
-                    content_probe = detect(
-                        u,
-                        cookies_browser=rt.get("cookies_browser"),
-                        cookies_file=rt.get("cookies_file"),
-                    )
-                    choice = build_choice_from_args(content_probe, args)
-                except DetectionError as e:
-                    console.print(f"[red]{u}: {e}[/red]")
-                    choice = None
-            if choice is not None:
-                return process_url(
-                    u, config, choice_override=choice, auto_confirm=True, playlist_mode=args.playlist, runtime=rt
-                )
             try:
-                probe = content_probe or detect(
+                probe = detect(
                     u,
                     cookies_browser=rt.get("cookies_browser"),
                     cookies_file=rt.get("cookies_file"),
                 )
-                default_choice = build_choice_from_args(probe, args)
             except DetectionError as e:
                 console.print(f"[red]{u}: {e}[/red]")
                 return False
+            choice = build_choice_from_args(probe, args)
             return process_url(
-                u, config, choice_override=default_choice, auto_confirm=True, playlist_mode=args.playlist, runtime=rt
+                u,
+                config,
+                choice_override=choice,
+                auto_confirm=True,
+                playlist_mode=args.playlist,
+                runtime=rt,
+                content_override=probe,
             )
         except Exception as e:  # noqa: BLE001
             console.print(f"[red]{u}: {e}[/red]")
@@ -404,16 +429,21 @@ def process_batch(urls: list[str], config: dict, args: argparse.Namespace, runti
         for u in urls:
             ok = _one(u)
             results["success" if ok else "failed"] += 1
+            if not ok:
+                results["failed_urls"].append(u)
         return results
 
     with ThreadPoolExecutor(max_workers=jobs) as ex:
         futs = {ex.submit(_one, u): u for u in urls}
         for fut in as_completed(futs):
+            u = futs[fut]
             try:
                 ok = fut.result()
             except Exception:  # noqa: BLE001
                 ok = False
             results["success" if ok else "failed"] += 1
+            if not ok:
+                results["failed_urls"].append(u)
     return results
 
 
@@ -462,6 +492,10 @@ def main(argv: list[str] | None = None) -> int:
         options.show_header(VERSION)
         summary = process_batch(urls, config, args, runtime=session)
         console.print(t("main.batch_done", ok=summary["success"], total=summary["total"]))
+        if summary.get("failed_urls"):
+            console.print(t("main.batch_failed_urls"))
+            for u in summary["failed_urls"]:
+                console.print(f"  [red]- {u}[/red]")
         return 0 if summary["failed"] == 0 else 1
 
     if args.url:
@@ -501,8 +535,15 @@ def main(argv: list[str] | None = None) -> int:
         if raw.lower() in ("q", "quit"):
             console.print(t("main.bye"))
             break
-        if raw.lower() == "history":
-            options.show_history_table(config.get("history", []))
+        if raw.lower() == "history" or raw.lower().startswith("history "):
+            parts = raw.split()
+            if len(parts) > 1 and parts[1].lower() == "clear":
+                history = config.get("history", [])
+                if history and Confirm.ask(t("hist.clear_confirm", n=len(history)), default=False):
+                    utils.clear_history(config)
+                    console.print(t("hist.cleared"))
+            else:
+                options.show_history_table(config.get("history", []))
             continue
         if raw.lower() == "settings":
             config = handle_settings(config)
