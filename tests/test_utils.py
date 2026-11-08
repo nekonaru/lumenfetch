@@ -400,7 +400,7 @@ def test_format_eta_none_when_missing_data():
 
 
 # ---------------------------------------------------------------------------
-# config.json (load/save/history) — pakai tmp_path biar tidak sentuh file asli
+# config.json (load/save/history) - pakai tmp_path biar tidak sentuh file asli
 # ---------------------------------------------------------------------------
 
 def test_load_config_creates_default_if_missing(tmp_path, monkeypatch):
