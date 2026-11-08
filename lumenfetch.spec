@@ -24,6 +24,7 @@ exe = EXE(
     [],
     name='lumenfetch',
     debug=False,
+    icon='assets/lumenfetch.ico',
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,

@@ -26,7 +26,7 @@ jobs:
           pip install pyinstaller
 
       - name: Build Windows exe
-        run: pyinstaller --onefile --console --name lumenfetch main.py
+        run: pyinstaller --onefile --console --name lumenfetch --icon assets/lumenfetch.ico main.py
 
       - name: Smoke test exe
         run: ./dist/lumenfetch.exe --version

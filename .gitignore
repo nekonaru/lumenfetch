@@ -12,3 +12,10 @@ config.json
 dist/
 build/
 *.egg-info/
+
+# local-only dev notes
+.dev/
+SECURITY_MAP.md
+SECURITY_REVIEW.md
+SECURITY_REPORT.md
+rancangan.md
