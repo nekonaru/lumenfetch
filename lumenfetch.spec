@@ -10,7 +10,8 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    # Keep the exe small and free of dead GUI frameworks.
+    excludes=["tkinter", "unittest", "pydoc", "doctest"],
     noarchive=False,
     optimize=0,
 )

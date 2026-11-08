@@ -1,4 +1,4 @@
-name: Publish
+﻿name: Publish
 
 on:
   release:
@@ -13,10 +13,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -26,13 +26,13 @@ jobs:
           pip install pyinstaller
 
       - name: Build Windows exe
-        run: pyinstaller --onefile --console --name lumenfetch --icon assets/lumenfetch.ico main.py
+        run: pyinstaller lumenfetch.spec --noconfirm
 
       - name: Smoke test exe
         run: ./dist/lumenfetch.exe --version
 
       - name: Attach exe to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/lumenfetch.exe
 
@@ -44,10 +44,10 @@ jobs:
       id-token: write
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
