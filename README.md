@@ -1,10 +1,11 @@
 <div align="center">
+  <img src="assets/logo.png" alt="Lumenfetch logo" width="120" />
   <h1>Lumenfetch: YouTube Downloader</h1>
   <p><b>Save any YouTube video as <code>.mp4</code> or <code>.mp3</code>, with quality picker, subtitles, and playlists,<br/>
   right from your terminal.</b></p>
 
-  <a href="https://pypi.org/project/lumenfetch/"><img src="https://img.shields.io/pypi/v/lumenfetch?style=flat-square&color=blue" alt="PyPI" /></a>
-  <a href="https://github.com/nekonaru/lumenfetch/actions"><img src="https://github.com/nekonaru/lumenfetch/actions/workflows/tests.yml/badge.svg" alt="Tests" /></a>
+  <a href="https://github.com/nekonaru/lumenfetch/releases"><img src="https://img.shields.io/github/v/release/nekonaru/lumenfetch?style=flat-square&color=blue" alt="Release" /></a>
+  <a href="https://github.com/nekonaru/lumenfetch/actions/workflows/tests.yml"><img src="https://github.com/nekonaru/lumenfetch/actions/workflows/tests.yml/badge.svg" alt="CI" /></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.9%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" /></a>
   <a href="https://github.com/nekonaru/lumenfetch/releases"><img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square" alt="Platform" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License" /></a>
@@ -32,14 +33,15 @@
 - [Display Language](#display-language)
 - [Playlist](#playlist)
 - [Batch Download](#batch-download)
-- [Cookies (Optional)](#cookies-optional)
-- [Non-Interactive Mode (Scripting/Automation)](#non-interactive-mode-scriptingautomation)
+- [Cookies](#cookies)
+- [Non-Interactive Mode](#non-interactive-mode)
 - [Output Structure](#output-structure)
 - [Default Folder per OS](#default-folder-per-os)
 - [Troubleshooting](#troubleshooting)
 - [Important Notes](#important-notes)
 - [Built With](#built-with)
 - [Project Structure](#project-structure)
+- [Development](#development)
 - [Testing](#testing)
 - [Continuous Integration](#continuous-integration)
 - [Contributing](#contributing)
@@ -67,7 +69,7 @@
 | **MP3 audio** | Bitrate Best/320kbps/192kbps/128kbps |
 | **Playlists** | First video only by default; `--playlist all` for the whole list |
 | **Auto M3U** | Audio playlists (`--playlist all`) also write an `.m3u` file |
-| **Subtitles & metadata** | Download subtitles + embed into MP4, optional via flags |
+| **Subtitles and metadata** | Download subtitles and embed into MP4, optional via flags |
 | **Safe filenames** | Illegal characters sanitized, duplicates get `(1)`, `(2)` suffixes |
 | **Browser/file cookies** | Optional, for age-restricted or private videos, from Chrome/Firefox/Edge/etc. or a `cookies.txt` file |
 
@@ -77,14 +79,14 @@
 |---------|-------------|
 | **Auto-detect** | Title, duration, and size estimates detected automatically |
 | **Dynamic options** | Quality menu adapts itself (video vs audio) |
-| **Size & time estimates** | Shown next to every quality option, computed from yt-dlp data + your own past download speeds |
+| **Size and time estimates** | Shown next to every quality option, computed from yt-dlp data plus your own past download speeds |
 | **Clipboard auto-paste** | A valid link in your clipboard is offered right away, never asked twice for the same content |
 
 ### Reliability
 
 | Feature | Description |
 |---------|-------------|
-| **Auto-retry & resume** | Connection errors retried with exponential backoff (default 3x); partial `.part` files resumed, not restarted |
+| **Auto-retry and resume** | Connection errors retried with exponential backoff (default 3x); partial `.part` files resumed, not restarted |
 | **Doctor** | `lumenfetch --doctor` diagnoses setup (ffmpeg, deps, cookies, network) |
 | **Self-update notice** | Tells you when a newer lumenfetch is on PyPI |
 | **yt-dlp update check** | Checks PyPI for a newer yt-dlp on every start, silently ignored when offline |
@@ -160,9 +162,13 @@ If a version number shows up (e.g. `Python 3.12.1`), you're ready.
 
 ### Option A: Install from PyPI (easiest)
 
+1. Run:
+
 ```bash
 pip install lumenfetch
 ```
+
+2. The `lumenfetch` command works from any terminal, continue to [Usage](#usage)
 
 > [!TIP]
 > If `pip` is not recognized, try `python -m pip install lumenfetch`.
@@ -173,14 +179,12 @@ pip install lumenfetch
 > pip install lumenfetch --break-system-packages
 > ```
 
-Once installed, the `lumenfetch` command works from any terminal, continue to [Usage](#usage).
-
-### Option B: Install from source (for development / reading the code)
+### Option B: Build from source (for development / reading the code)
 
 #### 1. Get the code
 
 <details>
-<summary><b>Have Git installed</b></summary>
+<summary><b>I have Git installed</b></summary>
 
 ```bash
 git clone https://github.com/nekonaru/lumenfetch.git
@@ -190,7 +194,7 @@ cd lumenfetch
 </details>
 
 <details>
-<summary><b>No Git</b></summary>
+<summary><b>I don't have Git</b></summary>
 
 1. Open the repository page on GitHub
 2. Click the green **`Code`** button, then choose **`Download ZIP`**
@@ -203,39 +207,45 @@ cd Downloads/lumenfetch-main
 
 </details>
 
-#### 2. Install in "editable" mode
+#### 2. Install dependencies and verify
 
 ```bash
 pip install -e .
+ruff check .
 ```
 
-> [!NOTE]
-> Same as Option A, append `--break-system-packages` if you hit the `externally-managed-environment` error.
+> [!IMPORTANT]
+> `ruff check .` must report no issues. Same as Option A, append `--break-system-packages` to the `pip install` command if you hit the `externally-managed-environment` error.
 
 This also registers the `lumenfetch` command, but it uses the code straight from this folder, handy if you want to modify the code and see results without reinstalling.
 
----
-
-## Usage
-
-**Run:**
+#### 3. Run it
 
 ```bash
 lumenfetch
 ```
 
-> [!NOTE]
-> If you installed from source without `pip install -e .`, run via `python main.py` from inside the project folder instead, but the editable install above is recommended.
+Any change to the code takes effect immediately, no reinstall needed.
 
-**Paste a YouTube URL when asked:**
+---
+
+## Usage
+
+### First launch
+
+1. Run:
+
+```bash
+lumenfetch
+```
+
+2. Paste a YouTube URL when asked, or answer `y` if the clipboard already holds one:
 
 ```
 Enter YouTube URL (q: quit, history, settings, help): https://youtube.com/watch?v=...
 ```
 
-If there is a valid link in your clipboard, Lumenfetch offers it first, just answer `y` to use it.
-
-**Pick an output type:**
+3. Choose an output type:
 
 ```
 Choose output type:
@@ -243,7 +253,7 @@ Choose output type:
   [2] Audio (MP3)
 ```
 
-**Pick a quality (size & ETA estimates included):**
+4. Choose a quality (size and ETA estimates included):
 
 ```
 Choose Quality:
@@ -253,9 +263,7 @@ Choose Quality:
   [4] 480p               (~42.9 MB, ~9 seconds)
 ```
 
-**Confirm the filename, then the download runs** with a real-time progress bar (speed, size, ETA). Press `Ctrl+C` anytime to cancel safely.
-
-**Done!**
+5. Confirm the filename, then the download runs with a real-time progress bar (speed, size, ETA). Press `Ctrl+C` anytime to cancel safely.
 
 ```
 Done!
@@ -264,13 +272,24 @@ Done!
    Time : 17 seconds
 ```
 
+> [!NOTE]
+> If you installed from source without `pip install -e .`, run via `python main.py` from inside the project folder instead, but the editable install above is recommended.
+
+### Everyday use
+
+- Run `lumenfetch` with no arguments for the interactive Q&A mode
+- Type `history` to see your last 20 downloads, `history clear` to wipe them
+- Type `settings` to change the download folder, max retry, auto-paste, naming template, and cookies
+- Type `help` for the full command list inside the prompt
+- Run `lumenfetch --doctor` to diagnose your setup (ffmpeg, deps, cookies, network) and exit
+
 ---
 
 ## Automatic Resume
 
 If a download stops halfway (connection drops, terminal closed), the partial `.part` file stays on disk.
 
-Just run the same URL again and yt-dlp **resumes** from where it stopped instead of starting over. Connection errors are also retried automatically with exponential backoff (2s, 4s, 8s... max 30s).
+Just run the same URL again and yt-dlp **resumes** from where it stopped instead of starting over. Connection errors are also retried automatically with exponential backoff (2s, 4s, 8s, up to 30s).
 
 ---
 
@@ -280,9 +299,9 @@ Your download folder, max retry, auto-paste, naming template, and cookies choice
 
 | OS | Config location |
 |----|-----------------|
-| Windows | `%APPDATA%\lumenfetch\config.json` |
-| macOS | `~/Library/Application Support/lumenfetch/config.json` |
-| Linux | `~/.config/lumenfetch/config.json` |
+| **Windows** | `%APPDATA%\lumenfetch\config.json` |
+| **macOS** | `~/Library/Application Support/lumenfetch/config.json` |
+| **Linux** | `~/.config/lumenfetch/config.json` |
 
 Detailed logs live in `lumenfetch.log` in the same folder (run with `-v/--verbose` for debug level).
 
@@ -298,7 +317,7 @@ lumenfetch --ui-lang en              # back to English
 LUMENFETCH_LANG=id lumenfetch        # via environment variable (Windows: set LUMENFETCH_LANG=id)
 ```
 
-Priority order: `--ui-lang` → `LUMENFETCH_LANG` env → `ui_lang` in user config → default `en`.
+Priority order: `--ui-lang`, then `LUMENFETCH_LANG` env, then `ui_lang` in user config, then default `en`.
 
 ---
 
@@ -322,7 +341,7 @@ lumenfetch --batch daftar.txt --jobs 2
 
 ---
 
-## Cookies (Optional)
+## Cookies
 
 Age-restricted or private videos need a login. If you hit such errors, enable one of these:
 
@@ -339,12 +358,12 @@ Age-restricted or private videos need a login. If you hit such errors, enable on
 
 1. Install the **"Get cookies.txt LOCALLY"** extension (Chrome/Edge/Firefox)
 2. Open youtube.com (make sure you're logged in), click the extension, then **Export** and save e.g. `D:\cookies.txt`
-3. In Lumenfetch: `settings` → `[5]` → `[1] Disable` → enter the cookie file path
+3. In Lumenfetch: `settings`, then `[5]`, then `[1] Disable`, then enter the cookie file path
 4. Or via CLI: `lumenfetch <URL> --cookies-file D:\cookies.txt`
 
 ---
 
-## Non-Interactive Mode (Scripting/Automation)
+## Non-Interactive Mode
 
 Besides the Q&A mode, Lumenfetch also runs via command line arguments, handy for scheduling (cron/Task Scheduler) or calling from other scripts.
 
@@ -417,9 +436,9 @@ YouTube_Lofi-Hip-Hop-Radio_2026.mp3
 
 | OS | Default folder |
 |----|----------------|
-| Windows | `C:\Users\<username>\Downloads` |
-| macOS | `/Users/<username>/Downloads` |
-| Linux | `/home/<username>/Downloads` |
+| **Windows** | `C:\Users\<username>\Downloads` |
+| **macOS** | `/Users/<username>/Downloads` |
+| **Linux** | `/home/<username>/Downloads` |
 
 Change it anytime via the `settings` command (`[1]`), absolute paths and `~` are both accepted.
 
@@ -438,7 +457,7 @@ Change it anytime via the `settings` command (`[1]`), absolute paths and `~` are
 | Downloaded video has no sound | Rare since ffmpeg is bundled, but if it happens, restart the app (the bundle re-downloads automatically if corrupted) |
 | Naming template rejected in `settings` | Only `%(platform)s`, `%(title)s`, `%(year)s` are allowed, rejected automatically on typos so filenames never break |
 | `Playlist with N videos` | Only the first video by default. Use `--playlist all` for all of them as indexed files |
-| `ffmpeg not found` | Install system ffmpeg first (lighter), bundled fallback is automatic. Check with `ffmpeg -version` |
+| `ffmpeg not found` | Install system ffmpeg first (lighter), the bundled fallback is automatic. Check with `ffmpeg -version` |
 | `YouTube needs a JavaScript runtime` | Install Deno (`winget install DenoLand.Deno`) or Node.js, required to solve YouTube signature challenges |
 
 ---
@@ -468,37 +487,46 @@ Change it anytime via the `settings` command (`[1]`), absolute paths and `~` are
 
 ```
 lumenfetch/
-├── main.py                    # Entry point, CLI args, batch, main loop
+├── assets/
+│   ├── logo.png               # project logo
+│   └── lumenfetch.ico         # icon for the Windows exe build
 ├── core/
-│   ├── constants.py           # Single source of truth (version, formats, limits)
-│   ├── errors.py              # Central error taxonomy (classification + friendly messages)
+│   ├── constants.py           # single source of truth (version, formats, limits)
+│   ├── errors.py              # central error taxonomy (classification + friendly messages)
 │   ├── i18n.py                # UI strings (English default, Indonesian via --ui-lang)
-│   ├── cli.py                 # Argument parsing + non-interactive choice building
-│   ├── doctor.py              # Setup diagnosis (ffmpeg, deps, cookies, network)
-│   ├── ffmpeg.py              # System ffmpeg first, bundled fallback
-│   ├── log.py                 # Central file logging
+│   ├── cli.py                 # argument parsing + non-interactive choice building
+│   ├── doctor.py              # setup diagnosis (ffmpeg, deps, cookies, network)
+│   ├── ffmpeg.py              # system ffmpeg first, bundled fallback
+│   ├── log.py                 # central file logging
 │   ├── downloader.py          # MP4 download / MP3 extract + resume + retry backoff
 │   ├── detector.py            # YouTube video info detection
-│   ├── options.py             # Interactive menus & prompts (rich)
-│   ├── update_checker.py      # Auto-check for newer yt-dlp on PyPI
-│   └── utils.py               # Filename sanitizing, size formatting, user config
+│   ├── options.py             # interactive menus and prompts (rich)
+│   ├── update_checker.py      # auto-check for newer yt-dlp on PyPI
+│   └── utils.py               # filename sanitizing, size formatting, user config
 ├── tests/
-│   ├── conftest.py            # Global fixtures (no-sleep) + SAMPLE_VIDEO_FORMATS
+│   ├── conftest.py            # global fixtures (no-sleep) + SAMPLE_VIDEO_FORMATS
 │   ├── test_utils.py
 │   ├── test_detector.py
 │   ├── test_downloader.py
 │   ├── test_options.py
 │   ├── test_main.py
-│   └── test_features.py       # Features (CLI, backoff, batch, ffmpeg, cookies, log)
+│   └── test_features.py       # features (CLI, backoff, batch, ffmpeg, cookies, log)
 ├── .github/
 │   └── workflows/
-│       └── tests.yml          # CI: automatic test & lint
-├── requirements.txt           # Dependency list (for manual reference)
-├── pyproject.toml             # Package metadata + entry point + ruff config
-├── CONTRIBUTING.md            # Contribution guide
+│       ├── publish.yml        # release: build exe + publish to PyPI
+│       └── tests.yml          # CI: test & lint
+├── main.py                    # entry point, CLI args, batch, main loop
+├── requirements.txt           # dependency list (for manual reference)
+├── pyproject.toml             # package metadata + entry point + ruff config
+├── lumenfetch.spec            # PyInstaller spec for the Windows exe
+├── CONTRIBUTING.md            # contribution guide (English)
+├── CONTRIBUTING.id.md         # contribution guide (Bahasa Indonesia)
+├── CHANGELOG.md               # version history (English)
+├── CHANGELOG.id.md            # version history (Bahasa Indonesia)
+├── SECURITY.md                # vulnerability reporting policy
 ├── LICENSE
-├── README.md                  # Main docs (English)
-└── README.id.md               # Docs (Bahasa Indonesia)
+├── README.md                  # main documentation (English)
+└── README.id.md               # documentation (Bahasa Indonesia)
 ```
 
 ### Module separation principles
@@ -506,12 +534,28 @@ lumenfetch/
 | Module | Principle |
 |--------|-----------|
 | `constants.py` | Shared values (version, formats, limits) so modules never drift |
-| `errors.py` | Central error classification used by detector & downloader together |
+| `errors.py` | Central error classification used by detector and downloader together |
 | `detector.py` | Purely detects YouTube video info, never downloads anything |
-| `downloader.py` | Purely MP4/MP3 processing & progress, never shows menus |
-| `options.py` | All user interaction & menus, no download logic |
+| `downloader.py` | Purely MP4/MP3 processing and progress, never shows menus |
+| `options.py` | All user interaction and menus, no download logic |
 | `utils.py` | Pure helpers (sanitizing, formatting, config read/write), knows nothing about CLI or network |
-| `main.py` | Ties everything together via CLI + main loop |
+| `main.py` | Ties everything together via CLI and the main loop |
+
+---
+
+## Development
+
+### Adding a new user-facing string
+
+1. Add the English string to `core/i18n.py` (English is the source)
+2. Add the Bahasa Indonesia pair right next to it
+3. Use the `t("your_key")` lookup in the code
+
+### Adding a feature
+
+1. Decide which `core/` module it belongs to (see the module separation principles above)
+2. Add tests in `tests/`
+3. Run `pytest tests/ -v` and `ruff check .` before pushing
 
 ---
 
@@ -525,13 +569,22 @@ pytest tests/ -v
 ruff check .
 ```
 
+| Check | Requirement |
+|-------|-------------|
+| `pytest tests/ -v` | Full suite passes |
+| Coverage gate | CI runs `pytest --cov=core --cov-fail-under=80`, must stay at or above 80% |
+| `ruff check .` | Zero issues |
+
+Lint is enforced through `pyproject.toml` (ruff, line-length 120, rules `E`, `F`, `I`, `B`, `UP`).
+
 ---
 
 ## Continuous Integration
 
 | Workflow | Purpose |
 |----------|---------|
-| `tests.yml` | Automatic test & lint, runs on every push & pull request to `main` |
+| `tests.yml` | pytest (Python 3.9-3.12, coverage gate 80%) and ruff on every push and pull request to `main` |
+| `publish.yml` | On release published: builds `lumenfetch.exe` (with the logo icon), attaches it to the release, publishes to PyPI via trusted publishing |
 
 ---
 
@@ -586,7 +639,7 @@ Download speed follows your connection. Connection errors are retried automatica
 
 <div align="center">
 
-| [![Nicolas Dwi Dharma](https://github.com/github.png?size=100)](https://github.com/nekonaru) |
+| [![Nicolas Dwi Dharma](https://github.com/nekonaru.png?size=100)](https://github.com/nekonaru) |
 |:---:|
 | **Nicolas Dwi Dharma** |
 | [github.com/nekonaru](https://github.com/nekonaru) |
