@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lumenfetch"
-version = "2.1.2"
+version = "2.2.0"
 description = "Save any YouTube video as MP4 or MP3 with a quality picker, subtitles, and playlists, right from your terminal."
 readme = "README.md"
 requires-python = ">=3.9"

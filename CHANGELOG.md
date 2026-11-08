@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.2.0
+
+Startup is faster and the release pipeline is leaner.
+
+### Improvements
+
+- **Faster startup.** Heavy dependencies (yt-dlp, parts of rich) are imported lazily, so commands like `--version` respond noticeably faster.
+- **Smaller, consistent Windows exe build.** The release build now uses the spec file, ships the logo icon, and excludes unused GUI toolkits.
+- **CI covers Python 3.13 and 3.14**, and GitHub Actions were updated to their latest major versions.
+- **Dependabot keeps dependencies current** in the pip and github-actions ecosystems.
+- **Internal cleanup.** Duplicated ffmpeg setup logic was unified, and the update checker no longer loads yt-dlp at import time.
+
 ## v2.1.2
 
 This release fixes repeated download failures (0 bytes, then an error) that happened even for public videos.

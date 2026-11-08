@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.2.0
+
+Startup lebih cepat dan pipeline rilis lebih ramping.
+
+### Peningkatan
+
+- **Startup lebih cepat.** Dependency berat (yt-dlp, sebagian rich) di-import secara lazy, jadi command seperti `--version` merespons jauh lebih cepat.
+- **Build exe Windows yang lebih kecil dan konsisten.** Build rilis sekarang memakai file spec, menyertakan icon logo, dan mengecualikan toolkit GUI yang tidak dipakai.
+- **CI mencakup Python 3.13 dan 3.14**, dan GitHub Actions diperbarui ke versi major terbaru.
+- **Dependabot menjaga dependency tetap terkini** untuk ekosistem pip dan github-actions.
+- **Bersih-bersih internal.** Logika setup ffmpeg yang duplikat digabungkan, dan update checker tidak lagi memuat yt-dlp saat import.
+
 ## v2.1.2
 
 Rilis ini memperbaiki kegagalan download berulang (0 bytes, lalu error) yang terjadi bahkan untuk video publik.
