@@ -11,8 +11,6 @@ import json
 import urllib.request
 from urllib.error import URLError
 
-import yt_dlp
-
 from core.constants import UPDATE_CHECK_TIMEOUT_SECONDS
 
 PYPI_URL = "https://pypi.org/pypi/yt-dlp/json"
@@ -21,6 +19,8 @@ TIMEOUT_SECONDS = UPDATE_CHECK_TIMEOUT_SECONDS
 
 
 def get_installed_version() -> str:
+    import yt_dlp  # noqa: PLC0415 - lazy, keeps importing this module cheap
+
     return yt_dlp.version.__version__
 
 

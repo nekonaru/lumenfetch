@@ -11,6 +11,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
@@ -28,21 +29,32 @@ from core.downloader import download
 from core.errors import DownloadCancelled, DownloadFailed
 from core.i18n import resolve_lang, set_lang, t
 
+if TYPE_CHECKING:
+    # Optional dependencies, imported lazily on first use (see __getattr__).
+    import pyperclip  # noqa: F401
+    import static_ffmpeg  # noqa: F401
+
 console = Console()
 
-# Re-export so tests (`main.pyperclip`, `main.static_ffmpeg`) keep working.
-try:
-    import pyperclip as _pyperclip_mod  # noqa: F401
-except ImportError:  # pragma: no cover - environment without clipboard
-    _pyperclip_mod = None  # type: ignore[assignment]
 
-try:
-    import static_ffmpeg as _static_ffmpeg_mod  # noqa: F401
-except ImportError:  # pragma: no cover
-    _static_ffmpeg_mod = None  # type: ignore[assignment]
+def __getattr__(name: str):
+    # Optional dependencies. Lazy on purpose so startup stays cheap; tests
+    # monkeypatch `main.pyperclip` / `main.static_ffmpeg`, which this keeps working.
+    if name == "pyperclip":
+        try:
+            import pyperclip as value
+        except ImportError:  # pragma: no cover - environment without clipboard
+            value = None
+    elif name == "static_ffmpeg":
+        try:
+            import static_ffmpeg as value
+        except ImportError:  # pragma: no cover
+            value = None
+    else:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    globals()[name] = value
+    return value
 
-pyperclip = _pyperclip_mod
-static_ffmpeg = _static_ffmpeg_mod
 
 # Re-exported from core.cli so existing callers (and tests) keep working
 # via the `main.*` namespace.
@@ -76,38 +88,17 @@ def _safe_io() -> None:
 
 
 def _get_pyperclip():
-    global pyperclip
-    if pyperclip is None:
-        try:
-            import pyperclip as mod  # noqa: PLC0415
-
-            pyperclip = mod
-        except ImportError:
-            return None
-    return pyperclip
+    return __getattr__("pyperclip")
 
 
 def _ensure_ffmpeg() -> bool:
     """Ensure ffmpeg is available: system first, bundled fallback (lazy)."""
     from core import ffmpeg as _ffmpeg  # noqa: PLC0415
 
-    if _ffmpeg.is_available():
+    if _ffmpeg.ensure():
         return True
-    global static_ffmpeg
-    if static_ffmpeg is None:
-        try:
-            import static_ffmpeg as mod  # noqa: PLC0415
-
-            static_ffmpeg = mod
-        except ImportError:
-            console.print(t("main.ffmpeg_missing"))
-            return False
-    try:
-        static_ffmpeg.add_paths()
-        return _ffmpeg.is_available() or True
-    except Exception as e:  # noqa: BLE001
-        console.print(t("main.ffmpeg_fail", e=e))
-        return False
+    console.print(t("main.ffmpeg_missing"))
+    return False
 
 
 def try_clipboard_url(config: dict, last_prompted: str | None) -> tuple[str | None, str | None]:
@@ -457,7 +448,8 @@ def main(argv: list[str] | None = None) -> int:
     _setup_log(verbose=args.verbose)
 
     if args.version:
-        console.print(f"Lumenfetch v{VERSION}")
+        # Plain print: avoid building a rich Console just for --version.
+        print(f"Lumenfetch v{VERSION}")
         return 0
 
     config = utils.load_config()

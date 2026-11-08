@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from core.constants import (
     AUDIO_FORMAT,
@@ -14,7 +15,10 @@ from core.constants import (
     SUBTITLE_LANGS_DEFAULT,
     VIDEO_FORMAT,
 )
-from core.options import DownloadChoice
+
+if TYPE_CHECKING:
+    # Only needed for annotations; importing it at runtime pulls in rich.
+    from core.options import DownloadChoice
 
 __all__ = [
     "parse_args",
@@ -83,6 +87,8 @@ def apply_cli_overrides(choice: DownloadChoice, args: argparse.Namespace) -> Dow
 
 def build_choice_from_args(content, args: argparse.Namespace) -> DownloadChoice:
     """Build a non-interactive DownloadChoice from CLI flags."""
+    from core.options import DownloadChoice  # noqa: PLC0415 - lazy, avoids rich at startup
+
     kind = args.output_type or ("audio" if content.content_type == "AUDIO" else "video")
     if args.fmt:
         fmt = args.fmt.lower()

@@ -7,6 +7,7 @@ No download logic here. Language follows core.i18n (default English).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from rich.console import Console
 from rich.panel import Panel
@@ -22,9 +23,12 @@ from core.constants import (
     VIDEO_FORMAT,
     VIDEO_QUALITIES,
 )
-from core.detector import DetectedContent
 from core.i18n import t
 from core.utils import estimate_audio_size_bytes, estimate_video_size_bytes, format_duration, format_eta, format_size
+
+if TYPE_CHECKING:
+    # Only needed for annotations; importing it at runtime pulls in yt-dlp.
+    from core.detector import DetectedContent
 
 console = Console()
 

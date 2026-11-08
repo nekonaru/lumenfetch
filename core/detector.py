@@ -10,8 +10,6 @@ import re
 from dataclasses import dataclass, field
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-import yt_dlp
-
 from core.constants import YOUTUBE_HOSTS
 from core.errors import DetectionError, classify_error, detection_message
 from core.i18n import t
@@ -25,6 +23,17 @@ __all__ = [
     "strip_playlist_context",
     "detect",
 ]
+
+
+def __getattr__(name: str):
+    # Lazy yt-dlp import: keeps importing this module cheap (~5 ms).
+    # Tests patch `detector.yt_dlp`; the proxy returns the real module.
+    if name == "yt_dlp":
+        import yt_dlp as value
+
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 URL_PATTERN = re.compile(r"^https?://[^\s]+$", re.IGNORECASE)
 
@@ -124,6 +133,8 @@ def _with_cookies_note(text: str) -> str:
 
 def detect(url: str, cookies_browser: str | None = None, cookies_file: str | None = None) -> DetectedContent:
     """Extract YouTube video info from a URL without downloading."""
+    import yt_dlp  # noqa: PLC0415 - lazy heavy import, cached by the import system
+
     from core.utils import apply_cookie_opts  # noqa: PLC0415 - avoid circular import
 
     if not is_valid_url(url):

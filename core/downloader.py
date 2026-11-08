@@ -12,19 +12,10 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-
-import yt_dlp
-from rich.console import Console
-from rich.progress import (
-    BarColumn,
-    DownloadColumn,
-    Progress,
-    TextColumn,
-    TimeRemainingColumn,
-    TransferSpeedColumn,
-)
+from typing import TYPE_CHECKING
 
 from core.constants import (
+    CONNECTION_ERROR_HINTS,
     EMBEDDABLE_VIDEO_FORMATS,
     PLAYLIST_MODE_ALL,
     RETRY_BASE_DELAY_SECONDS,
@@ -32,7 +23,6 @@ from core.constants import (
     RETRY_MAX_DELAY_SECONDS,
     SUBTITLE_LANGS_DEFAULT,
 )
-from core.detector import DetectedContent
 from core.errors import (
     DownloadCancelled,
     DownloadFailed,
@@ -41,7 +31,6 @@ from core.errors import (
 )
 from core.i18n import t
 from core.log import get_ydl_logger
-from core.options import DownloadChoice
 from core.utils import (
     _iter_dir_files,
     apply_cookie_opts,
@@ -49,6 +38,13 @@ from core.utils import (
     find_indexed_files,
     resolve_duplicate,
 )
+
+if TYPE_CHECKING:
+    # Annotations only; importing these at runtime pulls in rich/yt-dlp.
+    from rich.progress import Progress
+
+    from core.detector import DetectedContent
+    from core.options import DownloadChoice
 
 __all__ = [
     "DownloadCancelled",
@@ -60,11 +56,34 @@ __all__ = [
     "download",
 ]
 
-console = Console()
+_console_instance = None
 
-CONNECTION_ERROR_HINTS = tuple(__import__("core.constants", fromlist=["CONNECTION_ERROR_HINTS"]).CONNECTION_ERROR_HINTS)
 
-_HEIGHT_FILTERS = {    "Best": "",
+def _console():
+    global _console_instance
+    if _console_instance is None:
+        from rich.console import Console
+
+        _console_instance = Console()
+    return _console_instance
+
+
+def __getattr__(name: str):
+    # Lazy heavy imports and re-exports. Tests patch `downloader.yt_dlp`;
+    # the proxy returns the real module so patches apply to real downloads.
+    if name == "yt_dlp":
+        import yt_dlp as value
+    elif name == "DownloadChoice":
+        from core.options import DownloadChoice as value
+    elif name == "console":
+        value = _console()
+    else:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    globals()[name] = value
+    return value
+
+_HEIGHT_FILTERS = {
+    "Best": "",
     "1080p": "[height<=1080]",
     "720p": "[height<=720]",
     "480p": "[height<=480]",
@@ -199,6 +218,16 @@ def download(
     cookies_file: str | None = None,
 ) -> DownloadResult:
     """Download YouTube video/audio per the choice, with backoff retry for connection errors."""
+    import yt_dlp  # noqa: PLC0415 - lazy heavy import (import is cached)
+    from rich.progress import (
+        BarColumn,
+        DownloadColumn,
+        Progress,
+        TextColumn,
+        TimeRemainingColumn,
+        TransferSpeedColumn,
+    )
+
     output_folder.mkdir(parents=True, exist_ok=True)
 
     ext = choice.fmt
@@ -231,7 +260,7 @@ def download(
             DownloadColumn(),
             TransferSpeedColumn(),
             TimeRemainingColumn(),
-            console=console,
+            console=_console(),
         ) as progress:
             task_id = progress.add_task(f"📥 {content.title[:40]}", total=None)
             ydl_opts["progress_hooks"] = [_make_progress_hook(progress, task_id)]
@@ -248,12 +277,12 @@ def download(
                     if kind == "cookies" and ("cookiesfrombrowser" in ydl_opts or "cookiefile" in ydl_opts):
                         ydl_opts.pop("cookiesfrombrowser", None)
                         ydl_opts.pop("cookiefile", None)
-                        console.print(f"[yellow]{_friendly_message(kind)} - {t('dl.cookie_retry')}[/yellow]")
+                        _console().print(f"[yellow]{_friendly_message(kind)} - {t('dl.cookie_retry')}[/yellow]")
                         continue
                     if kind == "connection" and attempt < max_retry:
                         attempt += 1
                         delay = backoff_delay(attempt)
-                        console.print(t("dl.retry", a=attempt, m=max_retry, d=delay))
+                        _console().print(t("dl.retry", a=attempt, m=max_retry, d=delay))
                         time.sleep(delay)
                         continue
                     if kind == "format" and attempt < max_retry:
@@ -261,7 +290,7 @@ def download(
                         # extraction may get full formats again. Same backoff.
                         attempt += 1
                         delay = backoff_delay(attempt)
-                        console.print(t("dl.retry", a=attempt, m=max_retry, d=delay))
+                        _console().print(t("dl.retry", a=attempt, m=max_retry, d=delay))
                         time.sleep(delay)
                         continue
                     raise DownloadFailed(_friendly_message(kind)) from e
@@ -272,7 +301,7 @@ def download(
             salvaged = _salvage_media(dest, playlist_all)
             if salvaged is not None:
                 path, size, count = salvaged
-                console.print(f"[yellow]{t('dl.pp_warning')}[/yellow]")
+                _console().print(f"[yellow]{t('dl.pp_warning')}[/yellow]")
                 _cleanup_failed_dest(dest, playlist_all, keep={path})
                 _release_reservation(token)
                 return DownloadResult(
