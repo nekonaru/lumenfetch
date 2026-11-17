@@ -52,6 +52,10 @@ class DownloadChoice:
     embed_metadata: bool = False
     sponsorblock: list[str] | None = None  # e.g. ["sponsor", "intro", "outro"]
     write_info_json: bool = False
+    limit_rate: int | None = None  # bytes per second, None = unlimited
+    concurrent_fragments: int = 1
+    no_overwrites: bool = False
+    playlist_items: str | None = None  # e.g. "1-3,7" (yt-dlp syntax)
 
 
 def show_header(version: str = VERSION) -> None:

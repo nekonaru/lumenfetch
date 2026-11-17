@@ -464,8 +464,16 @@ def _build_ydl_opts(
         # defaults survive YouTube's SABR-only sessions much better.
     }
 
-    if force_single_item:
-        opts["playlist_items"] = "1"
+    if getattr(choice, "limit_rate", None):
+        opts["ratelimit"] = int(choice.limit_rate)
+    if getattr(choice, "concurrent_fragments", 1) and choice.concurrent_fragments > 1:
+        opts["concurrent_fragment_downloads"] = int(choice.concurrent_fragments)
+    if getattr(choice, "no_overwrites", False):
+        opts["no_overwrites"] = True
+
+    playlist_items = getattr(choice, "playlist_items", None) or ("1" if force_single_item else None)
+    if playlist_items:
+        opts["playlist_items"] = str(playlist_items)
 
     apply_cookie_opts(opts, cookies_browser, cookies_file)
 
