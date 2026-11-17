@@ -662,7 +662,7 @@ def test_audio_format_default_mp3_preferredcodec(tmp_path):
 def test_sponsorblock_chapters_option(tmp_path):
     choice = DownloadChoice(output_kind="video", quality="Best", fmt="mp4", sponsorblock_chapters=["sponsor", "intro"])
     opts = downloader._build_ydl_opts(choice, tmp_path / "v.mp4")
-    assert opts["sponsorblock_chapter"] == ["sponsor", "intro"]
+    assert opts["sponsorblock_mark"] == ["sponsor", "intro"]
     assert "sponsorblock_remove" not in opts
 
 
@@ -670,4 +670,4 @@ def test_sponsorblock_and_chapters_coexist(tmp_path):
     choice = DownloadChoice(output_kind="video", quality="Best", fmt="mp4", sponsorblock=["intro"], sponsorblock_chapters=["sponsor"])
     opts = downloader._build_ydl_opts(choice, tmp_path / "v.mp4")
     assert opts["sponsorblock_remove"] == ["intro"]
-    assert opts["sponsorblock_chapter"] == ["sponsor"]
+    assert opts["sponsorblock_mark"] == ["sponsor"]

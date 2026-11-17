@@ -377,7 +377,7 @@ lumenfetch "https://youtube.com/watch?v=..." -t video -f mp4 -q 720p -y
 |---|---|
 | `url` | Link video/playlist YouTube. Mengisi ini plus flag lain mengaktifkan mode non-interaktif. |
 | `-t/--type {video,audio}` | Tipe output |
-| `-f/--format {mp4,mp3}` | Format file output |
+| `-f/--format {mp4,mp3,m4a,opus,aac,flac,wav}` | Format file output (`mp4` video; codec audio `mp3`/`m4a`/`opus`/`aac`/`flac`/`wav`) |
 | `-q/--quality` | Quality video (Best/1080p/720p/480p/360p/Worst) atau bitrate MP3 (Best/320kbps/192kbps/128kbps) |
 | `-o/--output` | Folder penyimpanan custom |
 | `--cookies` | Cookies browser (chrome/firefox/edge/brave/opera/vivaldi/safari/none) |

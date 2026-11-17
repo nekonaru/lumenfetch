@@ -39,6 +39,8 @@ AUDIO_QUALITIES = ["Best", "320kbps", "192kbps", "128kbps"]
 # Video containers supported by yt-dlp's EmbedThumbnailPP.
 EMBEDDABLE_VIDEO_FORMATS = frozenset({"mp4"})
 
+AUDIO_CODEC_TO_EXT = {"aac": "m4a"}
+
 # --- Download ---
 CONNECTION_ERROR_HINTS = (
     "timed out",

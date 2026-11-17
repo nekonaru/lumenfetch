@@ -287,7 +287,7 @@ def download(
                         ydl.download([content.url])
                     break
                 except KeyboardInterrupt:
-                    raise DownloadCancelled("Download dibatalkan oleh user") from None
+                    raise DownloadCancelled("Download cancelled by the user") from None
                 except yt_dlp.utils.DownloadError as e:
                     kind = _classify_error(e)
                     if kind == "cookies" and ("cookiesfrombrowser" in ydl_opts or "cookiefile" in ydl_opts):
@@ -537,6 +537,8 @@ def _apply_subs_metadata_opts(opts: dict, postprocessors: list[dict], choice, au
         opts["sponsorblock_remove"] = list(sponsor_cats)
     sponsor_chapters = getattr(choice, "sponsorblock_chapters", None) or []
     if sponsor_chapters:
-        opts["sponsorblock_chapter"] = list(sponsor_chapters)
+        # yt-dlp implements chapter marking as sponsorblock_mark (it also
+        # enables the chapters); sponsorblock_remove skips segments instead.
+        opts["sponsorblock_mark"] = list(sponsor_chapters)
     if bool(getattr(choice, "write_info_json", False)):
         opts["writeinfojson"] = True

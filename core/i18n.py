@@ -114,6 +114,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "main.batch_empty": "[yellow]Batch file is empty.[/yellow]",
         "main.batch_read_fail": "[red]Failed to read batch file: {e}[/red]",
         "main.dry_run": "[dim][dry-run] would download: {name}[/dim]",
+        "main.audio_format_ignored": "[yellow]--audio-format only applies to audio output; it is ignored for video.[/yellow]",
+        "main.batch_dry_run_done": "[dim][dry-run] {ok}/{total} URLs would be downloaded.[/dim]",
         "main.warn_single": (
             "[yellow]⚠️  This playlist URL contains {n} videos - "
             "only the first one will be downloaded. (Use --playlist all for all.)[/yellow]"
@@ -289,6 +291,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "main.batch_empty": "[yellow]Batch file kosong.[/yellow]",
         "main.batch_read_fail": "[red]Gagal baca batch file: {e}[/red]",
         "main.dry_run": "[dim][dry-run] akan mendownload: {name}[/dim]",
+        "main.audio_format_ignored": "[yellow]--audio-format hanya berlaku untuk output audio; diabaikan untuk video.[/yellow]",
+        "main.batch_dry_run_done": "[dim][dry-run] {ok}/{total} URL akan didownload.[/dim]",
         "main.warn_single": (
             "[yellow]⚠️  URL ini playlist berisi {n} video - "
             "cuma video pertama yang didownload. (Gunakan --playlist all untuk semua.)[/yellow]"

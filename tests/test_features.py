@@ -881,3 +881,50 @@ def test_audio_format_wins_over_shorthand_fmt():
     choice = main.build_choice_from_args(content, args)
     assert choice.fmt == "m4a"
     assert choice.audio_format == "m4a"
+
+
+def test_audio_format_shorthand_fmt_only():
+    content = _content(content_type="AUDIO")
+    args = main.parse_args(["https://youtube.com/watch?v=abc", "-t", "audio", "-f", "m4a"])
+    choice = main.build_choice_from_args(content, args)
+    assert choice.fmt == "m4a"
+    assert choice.audio_format == "m4a"
+
+
+def test_audio_format_aac_maps_to_m4a_extension():
+    content = _content(content_type="AUDIO")
+    args = main.parse_args(["https://youtube.com/watch?v=abc", "-t", "audio", "--audio-format", "aac"])
+    choice = main.build_choice_from_args(content, args)
+    assert choice.audio_format == "aac"
+    assert choice.fmt == "m4a"
+
+
+def test_sponsorblock_chapters_invalid_category_rejected():
+    with pytest.raises(SystemExit):
+        main.parse_args(["https://x", "--sponsorblock-chapters", "bogus"])
+
+
+def test_sponsorblock_invalid_category_rejected():
+    with pytest.raises(SystemExit):
+        main.parse_args(["https://x", "--sponsorblock", "bogus"])
+
+
+def test_audio_format_ignored_warns_for_video(capsys):
+    content = _content(content_type="VIDEO")
+    args = main.parse_args(["https://youtube.com/watch?v=abc", "-t", "video", "--audio-format", "opus"])
+    main.build_choice_from_args(content, args)
+    assert "--audio-format" in capsys.readouterr().out
+
+
+def test_dry_run_does_not_record_history(tmp_path, monkeypatch):
+    recorded = []
+    monkeypatch.setattr(main.utils, "add_history_entry", lambda c, e: recorded.append(e))
+    monkeypatch.setattr(main, "detect", lambda *a, **k: _content(url="https://x", title="T"))
+    monkeypatch.setattr(main.options, "show_content_panel", lambda c: None)
+    monkeypatch.setattr(main.options, "resolve_choice", lambda c, avg_speed_bps=None: DownloadChoice(output_kind="video", quality="Best", fmt="mp4"))
+    monkeypatch.setattr(main, "download", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no download in dry-run")))
+
+    ok = main.process_url("https://x", utils.get_default_config(), dry_run=True)
+
+    assert ok is True
+    assert recorded == []

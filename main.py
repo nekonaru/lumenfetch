@@ -494,7 +494,10 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         options.show_header(VERSION)
         summary = process_batch(urls, config, args, runtime=session)
-        console.print(t("main.batch_done", ok=summary["success"], total=summary["total"]))
+        if args.dry_run:
+            console.print(t("main.batch_dry_run_done", ok=summary["success"], total=summary["total"]))
+        else:
+            console.print(t("main.batch_done", ok=summary["success"], total=summary["total"]))
         if summary.get("failed_urls"):
             console.print(t("main.batch_failed_urls"))
             for u in summary["failed_urls"]:

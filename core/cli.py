@@ -1,4 +1,5 @@
-"""cli.py - Argument parsing + non-interactive choice building. No business logic."""
+"""cli.py - Argument parsing + non-interactive choice building. No business logic;
+prints user-facing warnings for flags that do not apply."""
 
 from __future__ import annotations
 
@@ -8,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from core.constants import (
+    AUDIO_CODEC_TO_EXT,
     AUDIO_FORMAT,
     BATCH_DEFAULT_JOBS,
     BATCH_MAX_JOBS,
@@ -16,6 +18,7 @@ from core.constants import (
     SUBTITLE_LANGS_DEFAULT,
     VIDEO_FORMAT,
 )
+from core.i18n import t
 
 if TYPE_CHECKING:
     # Only needed for annotations; importing it at runtime pulls in rich.
@@ -24,6 +27,9 @@ if TYPE_CHECKING:
 _RATE_RE = re.compile(r"^([0-9]+(?:\.[0-9]+)?)\s*([BKMGT])?B?$", re.IGNORECASE)
 _FRAGMENTS_RE = re.compile(r"^[0-9]{1,2}$")
 _PLAYLIST_ITEMS_RE = re.compile(r"^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$")
+
+# yt-dlp's SponsorBlock categories.
+SPONSORBLOCK_CATEGORIES = sorted({"sponsor", "intro", "outro", "selfpromo", "preview", "filler", "interaction", "music_offtopic"})
 _RATE_UNITS = {"B": 1, "K": 1024, "M": 1024 * 1024, "G": 1024 * 1024 * 1024, "T": 1024 * 1024 * 1024 * 1024}
 
 __all__ = [
@@ -89,7 +95,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     p.add_argument("url", nargs="?", default=None, help="YouTube video/playlist URL directly")
     p.add_argument("-t", "--type", dest="output_type", choices=["video", "audio"], default=None)
-    p.add_argument("-f", "--format", dest="fmt", choices=["mp4", "mp3"], default=None)
+    p.add_argument("-f", "--format", dest="fmt", choices=["mp4", "mp3", "m4a", "opus", "aac", "flac", "wav"], default=None)
     p.add_argument("-q", "--quality", default=None, help="Video quality (Best/1080p/720p/480p/360p/Worst) or MP3 bitrate (Best/320kbps/192kbps/128kbps)")
     p.add_argument("-o", "--output", default=None, help="Folder output (override config)")
     p.add_argument("--cookies", default=None, help="Browser cookies (chrome/firefox/edge/brave/opera/vivaldi/safari/none)")
@@ -100,7 +106,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--sub-langs", default=None, help="Subtitle languages, comma-separated (default: en,id)")
     p.add_argument("--embed-subs", action="store_true")
     p.add_argument("--embed-metadata", action="store_true")
-    p.add_argument("--sponsorblock", nargs="*", default=None, help="Skip SponsorBlock segments (e.g. --sponsorblock sponsor intro outro)")
+    p.add_argument("--sponsorblock", nargs="*", default=None, choices=SPONSORBLOCK_CATEGORIES, help="Skip SponsorBlock segments (e.g. --sponsorblock sponsor intro outro)")
     p.add_argument("--write-info-json", action="store_true", help="Save video metadata as .info.json next to the file")
     p.add_argument("--batch", default=None, help="Text file with URLs (one per line)")
     p.add_argument("--jobs", type=int, default=BATCH_DEFAULT_JOBS, help=f"Batch parallelism 1-{BATCH_MAX_JOBS} (default 1)")
@@ -109,7 +115,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--no-overwrites", dest="no_overwrites", action="store_true", help="Skip download if the output file already exists")
     p.add_argument("--playlist-items", dest="playlist_items", type=_playlist_items_arg, default=None, metavar="ITEMS", help="Only download these playlist items (e.g. '1-3,7'; playlist URLs)")
     p.add_argument("--audio-format", dest="audio_format", choices=["mp3", "m4a", "opus", "aac", "flac", "wav"], default=None, help="Audio codec for extraction (default: mp3)")
-    p.add_argument("--sponsorblock-chapters", dest="sponsorblock_chapters", nargs="*", default=None, help="Mark SponsorBlock segments as chapters instead of skipping (e.g. --sponsorblock-chapters sponsor intro outro)")
+    p.add_argument("--sponsorblock-chapters", dest="sponsorblock_chapters", nargs="*", default=None, choices=SPONSORBLOCK_CATEGORIES, help="Mark SponsorBlock segments as chapters instead of skipping them (e.g. --sponsorblock-chapters sponsor intro outro)")
     p.add_argument("--dry-run", dest="dry_run", action="store_true", help="Detect and report what would be downloaded without downloading")
     p.add_argument("--no-clipboard", action="store_true")
     p.add_argument("--yes", "-y", action="store_true", help="Skip the filename confirmation")
@@ -162,11 +168,17 @@ def build_choice_from_args(content, args: argparse.Namespace) -> DownloadChoice:
     from core.options import DownloadChoice  # noqa: PLC0415 - lazy, avoids rich at startup
 
     kind = args.output_type or ("audio" if content.content_type == "AUDIO" else "video")
-    audio_format = getattr(args, "audio_format", None) if kind == "audio" else None
     if kind == "audio":
         # An explicit --audio-format wins over the shorthand -f for audio.
-        fmt = audio_format or (args.fmt.lower() if args.fmt else AUDIO_FORMAT)
+        codec = getattr(args, "audio_format", None) or (args.fmt.lower() if args.fmt else AUDIO_FORMAT)
+        audio_format = codec
+        fmt = AUDIO_CODEC_TO_EXT.get(codec, codec)
     else:
+        if getattr(args, "audio_format", None) is not None:
+            from rich.console import Console
+
+            Console().print(t("main.audio_format_ignored"))
+        audio_format = None
         fmt = VIDEO_FORMAT
     choice = DownloadChoice(output_kind=kind, quality=args.quality or "Best", fmt=fmt)
     if audio_format:

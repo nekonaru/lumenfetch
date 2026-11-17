@@ -6,13 +6,9 @@ New audio codecs, chapter-based SponsorBlock marking, and a dry-run mode.
 
 ### New features
 
-- **Audio codecs.** `--audio-format` picks the codec for audio extraction (`mp3` default, plus `m4a`, `opus`, `aac`, `flac`, `wav`).
-- **SponsorBlock chapters.** `--sponsorblock-chapters` marks segments as chapters in the output file instead of skipping them.
-- **Dry run.** `--dry-run` detects and reports what would be downloaded (title, filename, quality, size estimates) without downloading or requiring ffmpeg.
-
-### Improvements
-
-- **Code comments and logs are now in English.** The remaining Indonesian strings in code were translated.
+- **Audio codecs.** `--audio-format` picks the codec for audio extraction (`mp3` default, plus `m4a`, `opus`, `aac`, `flac`, `wav`). `-f` accepts the same audio codecs.
+- **SponsorBlock chapters.** `--sponsorblock-chapters` marks segments as chapters in the output file instead of skipping them. Pass an empty list to mark only the `sponsor` category.
+- **Dry run.** `--dry-run` detects and prints the plan (title, filename, type, duration) without downloading or requiring ffmpeg.
 
 ## v2.3.0
 

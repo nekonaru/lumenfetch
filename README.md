@@ -377,7 +377,7 @@ lumenfetch "https://youtube.com/watch?v=..." -t video -f mp4 -q 720p -y
 |---|---|
 | `url` | YouTube video/playlist URL. Filling this enables non-interactive mode when combined with other flags. |
 | `-t/--type {video,audio}` | Output type |
-| `-f/--format {mp4,mp3}` | Output format |
+| `-f/--format {mp4,mp3,m4a,opus,aac,flac,wav}` | Output format (`mp4` video; audio codecs `mp3`/`m4a`/`opus`/`aac`/`flac`/`wav`) |
 | `-q/--quality` | Video quality (Best/1080p/720p/480p/360p/Worst) or MP3 bitrate (Best/320kbps/192kbps/128kbps) |
 | `-o/--output` | Custom output folder |
 | `--cookies` | Browser cookies (chrome/firefox/edge/brave/opera/vivaldi/safari/none) |

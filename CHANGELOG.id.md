@@ -6,9 +6,9 @@ Codec audio baru, penandaan chapter SponsorBlock, dan mode dry-run.
 
 ### Fitur baru
 
-- **Codec audio.** `--audio-format` memilih codec untuk ekstraksi audio (default `mp3`, plus `m4a`, `opus`, `aac`, `flac`, `wav`).
-- **Chapter SponsorBlock.** `--sponsorblock-chapters` menandai segmen sebagai chapter di file hasil, bukan melewatinya.
-- **Dry run.** `--dry-run` mendeteksi dan melaporkan yang akan didownload (judul, nama file, quality, estimasi ukuran) tanpa mendownload atau membutuhkan ffmpeg.
+- **Codec audio.** `--audio-format` memilih codec untuk ekstraksi audio (default `mp3`, plus `m4a`, `opus`, `aac`, `flac`, `wav`). `-f` menerima codec audio yang sama.
+- **Chapter SponsorBlock.** `--sponsorblock-chapters` menandai segmen sebagai chapter di file hasil, bukan melewatinya. Kirim list kosong untuk menandai hanya kategori `sponsor`.
+- **Dry run.** `--dry-run` mendeteksi dan menampilkan rencana (judul, nama file, tipe, durasi) tanpa mendownload atau membutuhkan ffmpeg.
 
 ### Peningkatan
 
