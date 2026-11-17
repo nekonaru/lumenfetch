@@ -162,16 +162,11 @@ def build_choice_from_args(content, args: argparse.Namespace) -> DownloadChoice:
     from core.options import DownloadChoice  # noqa: PLC0415 - lazy, avoids rich at startup
 
     kind = args.output_type or ("audio" if content.content_type == "AUDIO" else "video")
-    audio_format = args.audio_format if kind == "audio" else None
-    if args.fmt:
-        fmt = args.fmt.lower()
-    elif audio_format:
-        fmt = audio_format
+    audio_format = getattr(args, "audio_format", None) if kind == "audio" else None
+    if kind == "audio":
+        # An explicit --audio-format wins over the shorthand -f for audio.
+        fmt = audio_format or (args.fmt.lower() if args.fmt else AUDIO_FORMAT)
     else:
-        fmt = AUDIO_FORMAT if kind == "audio" else VIDEO_FORMAT
-    if kind == "audio" and fmt != AUDIO_FORMAT and not audio_format:
-        fmt = AUDIO_FORMAT
-    if kind == "video" and fmt != VIDEO_FORMAT:
         fmt = VIDEO_FORMAT
     choice = DownloadChoice(output_kind=kind, quality=args.quality or "Best", fmt=fmt)
     if audio_format:

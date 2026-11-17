@@ -873,3 +873,11 @@ def test_dry_run_forces_non_interactive_mode(monkeypatch):
 
     assert code == 0
     assert captured.get("dry_run") is True
+
+
+def test_audio_format_wins_over_shorthand_fmt():
+    content = _content(content_type="AUDIO")
+    args = main.parse_args(["https://youtube.com/watch?v=abc", "-t", "audio", "-f", "mp3", "--audio-format", "m4a"])
+    choice = main.build_choice_from_args(content, args)
+    assert choice.fmt == "m4a"
+    assert choice.audio_format == "m4a"
