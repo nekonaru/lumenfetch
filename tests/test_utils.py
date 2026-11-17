@@ -1,7 +1,7 @@
 """
 test_lumenfetch.py
-Unit test untuk fungsi-fungsi inti (sanitasi nama file, format ukuran,
-naming template, resolve duplikat, config, validasi URL, dll).
+Unit tests for core functions (filename sanitizing, size formatting,
+naming templates, duplicate resolution, config, URL validation, etc.).
 """
 
 from pathlib import Path
@@ -66,15 +66,15 @@ def test_build_filename_falls_back_when_empty():
 
 def test_build_filename_never_crashes_on_invalid_template():
     """
-    Regresi bug: user bebas ganti naming_template lewat settings tanpa
-    validasi. Template dengan placeholder salah ketik (mis. %(titel)s bukan
-    %(title)s) dulu bikin build_filename() raise KeyError mentah - dan
-    karena pemanggilannya di main.py ada DI LUAR try/except, ini bikin
-    seluruh aplikasi crash total. build_filename() sekarang WAJIB fail-safe:
-    fallback ke template default, bukan raise exception.
+    Bug regression: users could set any naming_template via settings
+    without validation. A misspelled placeholder (e.g. %(titel)s instead of
+    %(title)s) used to make build_filename() raise a raw KeyError - and
+    because its call site in main.py is OUTSIDE try/except, this crashed
+    the whole app. build_filename() must now fail safe: fall back to the
+    default template instead of raising.
     """
     result = utils.build_filename("YouTube", "Judul Video", "mp4", "%(platform)s_%(titel)s_%(year)s")
-    assert result  # tidak raise, dan hasilnya tetap nama file yang valid
+    assert result  # does not raise, and the result is still a valid filename
     assert result.endswith(".mp4")
 
 
@@ -126,12 +126,12 @@ def test_resolve_duplicate_increments_suffix(tmp_path):
 
 def test_resolve_duplicate_multi_item_detects_existing_group(tmp_path):
     """
-    Regresi: outtmpl multi-item (galeri/carousel) menghasilkan file dengan
-    suffix index ("Judul-1.jpg", "Judul-2.jpg", dst) - file persis
-    "Judul.jpg" TIDAK PERNAH benar-benar dibuat. Kalau resolve_duplicate()
-    dipanggil tanpa tau ini, ia salah menyimpulkan "belum pernah didownload"
-    padahal grupnya sudah ada, sehingga download kedua diam-diam menimpa
-    hasil download pertama alih-alih dapat suffix (1).
+    Regression: multi-item outtmpl (gallery/carousel) produces files with
+    an index suffix ("Judul-1.jpg", "Judul-2.jpg", etc.) - the exact plain
+    "Judul.jpg" file is NEVER actually created. Without knowing this,
+    resolve_duplicate() wrongly concludes "not downloaded yet" even
+    though its multi-item group already exists, so a second download
+    silently overwrote the first one instead of getting a (1) suffix.
     """
     (tmp_path / "Judul-1.jpg").touch()
     (tmp_path / "Judul-2.jpg").touch()
@@ -156,7 +156,7 @@ def test_resolve_duplicate_multi_item_increments_when_both_groups_exist(tmp_path
 
 
 def test_resolve_duplicate_single_item_unaffected_by_multi_item_default():
-    """multi_item default False - behavior lama untuk single-item tidak boleh berubah."""
+    """multi_item defaults to False - the old single-item behavior must not change."""
     import inspect
 
     sig = inspect.signature(utils.resolve_duplicate)
@@ -179,12 +179,12 @@ def test_find_indexed_files_matches_numeric_suffix(tmp_path):
 
 def test_find_indexed_files_sorts_numerically_not_alphabetically(tmp_path):
     """
-    Regresi: sorted() string biasa bikin "Galeri-10.jpg" muncul SEBELUM
-    "Galeri-2.jpg" (perbandingan karakter '1' < '2'), padahal urutan aslinya
-    seharusnya 2 dulu baru 10. Harus diurutkan numerik berdasarkan angka
-    index-nya, bukan alfabetis dari nama file.
+    Regression: plain string sorted() puts "Galeri-10.jpg" BEFORE
+    "Galeri-2.jpg" (character comparison 1 < 2), but the true order is
+    2 before 10. Must be sorted numerically by the index number,
+    not alphabetically by filename.
     """
-    # sengaja dibuat gak berurutan biar gak kebetulan lolos meski logic salah
+    # deliberately unordered so a wrong logic would not accidentally pass
     (tmp_path / "Galeri-10.jpg").touch()
     (tmp_path / "Galeri-2.jpg").touch()
     (tmp_path / "Galeri-1.jpg").touch()
@@ -196,22 +196,23 @@ def test_find_indexed_files_sorts_numerically_not_alphabetically(tmp_path):
 
 def test_find_indexed_files_does_not_false_positive_on_prefix_overlap(tmp_path):
     """
-    Regresi edge case: glob polos "{stem}-*.*" false-positive kalau ada
-    konten LAIN yang judulnya kebetulan numpuk sebagai prefix. Stem "Sunset"
-    tidak boleh ikut cocok ke "Sunset-Beach-1.jpg" (itu punya konten beda,
-    judulnya "Sunset-Beach"), karena setelah "Sunset-" karakternya "B",
-    bukan digit - regex `-\\d+\\.` di akhir yang jadi pembeda.
+    Edge-case regression: a plain "{stem}-*.*" glob false-positives when
+    OTHER content happens to share the title as a prefix. Stem "Sunset"
+    must NOT match "Sunset-Beach-1.jpg" (that file belongs to different
+    content titled "Sunset-Beach"), because the characters after
+    "Sunset-" are "B", not a digit - the trailing regex is what
+    disambiguates.
     """
     (tmp_path / "Sunset-Beach-1.jpg").touch()
     (tmp_path / "Sunset-Beach-2.jpg").touch()
 
     result = utils.find_indexed_files(tmp_path / "Sunset.jpg")
 
-    assert result == []  # bukan punya "Sunset", jadi harus kosong
+    assert result == []  # not owned by "Sunset", so must be empty
 
 
 def test_find_indexed_files_still_matches_its_own_prefix_stem(tmp_path):
-    """Stem "Sunset-Beach" itu sendiri tetap harus match filenya sendiri."""
+    """Stem "Sunset-Beach" itself must still match its own files."""
     (tmp_path / "Sunset-Beach-1.jpg").touch()
     (tmp_path / "Sunset-Beach-2.jpg").touch()
 
@@ -223,8 +224,8 @@ def test_find_indexed_files_still_matches_its_own_prefix_stem(tmp_path):
 def test_resolve_duplicate_multi_item_no_false_positive_from_other_content(tmp_path):
     """
     Regresi end-to-end: download galeri "Sunset-Beach" duluan, lalu download
-    galeri BARU "Sunset" (belum pernah ada) - harus dapat nama polos tanpa
-    suffix (1), karena ini memang belum pernah didownload sebelumnya.
+    NEW gallery "Sunset" (never seen before) - it must get the plain name
+    without a (1) suffix, because it really was never downloaded before.
     """
     (tmp_path / "Sunset-Beach-1.jpg").touch()
     (tmp_path / "Sunset-Beach-2.jpg").touch()
@@ -293,15 +294,15 @@ def test_estimate_video_size_specific_tier():
 
 def test_estimate_video_size_worst_picks_lowest_resolution():
     size = utils.estimate_video_size_bytes(SAMPLE_VIDEO_FORMATS, "Worst", duration=300)
-    assert size == 40_000_000 + 5_000_000  # 480p (paling rendah di sample) + audio
+    assert size == 40_000_000 + 5_000_000  # 480p (lowest in sample) + audio
 
 
 def test_estimate_video_size_returns_none_when_tier_unavailable():
     """
-    Kalau tier yang diminta (mis. 360p) gak ada di daftar format konten ini,
-    HARUS None - bukan fallback nebak pakai ukuran tier lain (itu bakal
-    nampilin angka yang menyesatkan, mis. "360p" tapi ukurannya sama gede
-    kayak "Best"/1080p).
+    If the requested tier (e.g. 360p) is not present in this content's
+    format list, it MUST return None - not a guessed fallback using another
+    tier's size (that would show a misleading number, e.g. 360p with the
+    same size as Best/1080p).
     """
     size = utils.estimate_video_size_bytes(SAMPLE_VIDEO_FORMATS, "360p", duration=300)
     assert size is None
@@ -326,7 +327,7 @@ def test_estimate_video_size_falls_back_to_bitrate_when_no_filesize():
 
 
 def test_estimate_audio_size_fixed_bitrate_uses_target_kbps():
-    """Bitrate tetap (320/192/128) dihitung dari TARGET output, bukan sumbernya - lebih akurat setelah ffmpeg convert."""
+    """Fixed bitrates (320/192/128) are computed from the target OUTPUT bitrate, not the source - more accurate after the ffmpeg convert."""
     size = utils.estimate_audio_size_bytes([], "320kbps", duration=200)
     assert size == int(320 * 1000 / 8 * 200)
 
@@ -364,7 +365,7 @@ def test_estimate_average_speed_skips_failed_entries():
 
 
 def test_estimate_average_speed_skips_entries_missing_data():
-    """Entri riwayat lama (sebelum fitur ini ada) gak punya size_bytes/elapsed_seconds - harus di-skip, bukan crash."""
+    """Legacy history entries (from before this feature existed) have no size_bytes/elapsed_seconds - must be skipped, not crash."""
     history = [
         {"success": True, "title": "video lama tanpa size_bytes"},
         {"success": True, "size_bytes": 10_000_000, "elapsed_seconds": 2},  # 5 MB/s
@@ -400,7 +401,7 @@ def test_format_eta_none_when_missing_data():
 
 
 # ---------------------------------------------------------------------------
-# config.json (load/save/history) - pakai tmp_path biar tidak sentuh file asli
+# config.json (load/save/history) - use tmp_path so the real file is never touched
 # ---------------------------------------------------------------------------
 
 def test_load_config_creates_default_if_missing(tmp_path, monkeypatch):
@@ -416,11 +417,11 @@ def test_load_config_creates_default_if_missing(tmp_path, monkeypatch):
 
 def test_get_default_download_folder_is_os_downloads_folder():
     """
-    Regresi: default lama "downloads/" itu folder relatif di dalam project
-    (bukan folder Downloads asli sistem operasi), beda dari kebiasaan
-    browser lain (Chrome/Firefox/Edge) yang defaultnya selalu ke folder
-    Downloads user. Default sekarang harus folder Downloads asli, ABSOLUTE
-    path, bukan folder relatif "downloads/" lagi.
+    Regression: the old default "downloads/" was a relative folder inside
+    the project (not the real OS Downloads folder), unlike other browsers
+    (Chrome/Firefox/Edge) whose default is always the user's Downloads
+    folder. The default now has to be the real Downloads folder, an
+    ABSOLUTE path, not a relative "downloads/" folder anymore.
     """
     result = utils.get_default_download_folder()
     assert result == str(Path.home() / "Downloads")
@@ -436,7 +437,7 @@ def test_load_config_merges_missing_fields(tmp_path, monkeypatch):
     config = utils.load_config()
 
     assert config["download_folder"] == "custom/"
-    assert config["max_retry"] == 3  # field yang hilang tetap keisi default
+    assert config["max_retry"] == 3  # missing field still filled with the default
 
 
 def test_load_config_resets_on_corrupt_json(tmp_path, monkeypatch):
@@ -450,8 +451,8 @@ def test_load_config_resets_on_corrupt_json(tmp_path, monkeypatch):
 
 
 def test_get_default_config_returns_independent_copy():
-    """get_default_config() harus deep copy - mengubah hasilnya tidak boleh
-    ikut mengubah DEFAULT_CONFIG module-level ataupun salinan lain."""
+    """get_default_config() must deep-copy - mutating the result must not
+    affect the module-level DEFAULT_CONFIG or any other copy."""
     a = utils.get_default_config()
     b = utils.get_default_config()
 
@@ -463,12 +464,13 @@ def test_get_default_config_returns_independent_copy():
 
 def test_load_config_does_not_leak_history_across_instances(tmp_path, monkeypatch):
     """
-    Regresi buat bug shared-mutable-default: DEFAULT_CONFIG.copy() itu shallow
-    copy, jadi list "history" di config hasil load_config() dulu nunjuk ke
-    object YANG SAMA dengan DEFAULT_CONFIG["history"]. Begitu add_history_entry()
-    memutasi list itu, DEFAULT_CONFIG ikut "tercemar" dan bocor ke SEMUA config
-    baru berikutnya - termasuk pas user pilih Settings > Reset ke default,
-    yang harusnya bersih total tapi malah masih bawa riwayat lama.
+    Regression for the shared-mutable-default bug: DEFAULT_CONFIG.copy()
+    was a shallow copy, so the "history" list in configs from load_config()
+    used to point at the SAME object as DEFAULT_CONFIG["history"]. Once
+    add_history_entry() mutated that list, DEFAULT_CONFIG became
+    "contaminated" and leaked into EVERY new config afterwards - including
+    after the user chose Settings > Reset to defaults, which should be a
+    clean slate but was still carrying the old history.
     """
     config_path_a = tmp_path / "a" / "config.json"
     config_path_a.parent.mkdir(parents=True, exist_ok=True)
@@ -476,10 +478,10 @@ def test_load_config_does_not_leak_history_across_instances(tmp_path, monkeypatc
     config_a = utils.load_config()
     utils.add_history_entry(config_a, {"title": "video-a"})
 
-    # DEFAULT_CONFIG module-level tidak boleh ikut kotor
+    # the module-level DEFAULT_CONFIG must not get dirtied
     assert utils.DEFAULT_CONFIG["history"] == []
 
-    # Config baru (mis. simulasi "reset ke default") harus benar-benar bersih
+    # A new config (e.g. simulating "reset to defaults") must be truly clean
     config_path_b = tmp_path / "b" / "config.json"
     config_path_b.parent.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(utils, "CONFIG_PATH", config_path_b)
@@ -497,7 +499,7 @@ def test_add_history_entry_keeps_max_20(tmp_path, monkeypatch):
         utils.add_history_entry(config, {"title": f"video-{i}"})
 
     assert len(config["history"]) == 20
-    assert config["history"][0]["title"] == "video-24"  # entri terbaru di posisi awal
+    assert config["history"][0]["title"] == "video-24"  # newest entry lands first
 
 
 def test_clear_history(tmp_path, monkeypatch):
@@ -531,15 +533,15 @@ def test_build_cookies_from_browser(browser, expected):
 
 
 # ---------------------------------------------------------------------------
-# utils.save_config - fail-safe kalau disk write gagal
+# utils.save_config - fail-safe when disk writes fail
 # ---------------------------------------------------------------------------
 
 def test_save_config_does_not_raise_on_oserror(tmp_path, monkeypatch):
     """
-    Regresi: save_config() (dipanggil dari load_config, handle_settings,
-    add_history_entry) dulu tidak dibungkus try/except - kalau folder
-    tempat app dijalankan read-only, ini bisa crash dengan pola yang sama
-    kayak bug static_ffmpeg di atas.
+    Regression: save_config() (called from load_config, handle_settings,
+    add_history_entry) used to be unguarded - when the folder the app runs
+    in is read-only, it could crash the same way as the static_ffmpeg bug
+    above.
     """
     config_path = tmp_path / "config.json"
     monkeypatch.setattr(utils, "CONFIG_PATH", config_path)
@@ -549,16 +551,16 @@ def test_save_config_does_not_raise_on_oserror(tmp_path, monkeypatch):
 
     monkeypatch.setattr(Path, "open", fake_open)
 
-    utils.save_config(utils.get_default_config())  # TIDAK BOLEH raise
+    utils.save_config(utils.get_default_config())  # must NOT raise
 
 
 def test_load_config_still_works_when_disk_write_fails(tmp_path, monkeypatch):
     """
-    Test end-to-end: load_config() (yang manggil save_config() di baliknya
-    saat config.json belum ada) harus tetap balikin config in-memory yang
-    valid meski disk-nya gagal ditulis (mis. read-only) - fail-safe-nya
-    save_config() harus otomatis melindungi load_config() juga, tanpa perlu
-    load_config() punya try/except sendiri.
+    End-to-end test: load_config() (which calls save_config() internally
+    when config.json does not exist yet) must still return a valid
+    in-memory config even when the disk write fails (e.g. read-only) - the
+    save_config() fail-safe automatically protects load_config() too,
+    without load_config() needing its own try/except.
     """
     config_path = tmp_path / "config.json"
     monkeypatch.setattr(utils, "CONFIG_PATH", config_path)
@@ -573,10 +575,10 @@ def test_load_config_still_works_when_disk_write_fails(tmp_path, monkeypatch):
 
     monkeypatch.setattr(Path, "open", fake_open)
 
-    config = utils.load_config()  # TIDAK BOLEH raise
+    config = utils.load_config()  # must NOT raise
 
     assert config["download_folder"] == utils.get_default_download_folder()
-    assert not config_path.exists()  # gagal ke-tulis, tapi config in-memory tetap valid
+    assert not config_path.exists()  # write failed, but the in-memory config is still valid
 
 
 

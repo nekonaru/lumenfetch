@@ -1,7 +1,7 @@
 """
 test_lumenfetch.py
-Unit test untuk fungsi-fungsi inti (sanitasi nama file, format ukuran,
-naming template, resolve duplikat, config, validasi URL, dll).
+Unit tests for core functions (filename sanitizing, size formatting,
+naming templates, duplicate resolution, config, URL validation, etc.).
 """
 
 from pathlib import Path
@@ -11,32 +11,31 @@ from core import utils
 from core.options import DownloadChoice
 
 # ---------------------------------------------------------------------------
-# main.main() - startup tidak boleh crash kalau static_ffmpeg gagal
+# main.main() - startup must not crash when static_ffmpeg fails
 # ---------------------------------------------------------------------------
 
 def test_main_does_not_crash_when_static_ffmpeg_fails(monkeypatch):
     """
-    Regresi bug KRITIS: static_ffmpeg.add_paths() butuh internet buat
-    download binary ffmpeg di percobaan PERTAMA di komputer itu. Kalau
-    gagal (offline, GitHub diblokir firewall kantor/kampus, dll) dan
-    pemanggilannya tidak dibungkus try/except, exception itu nembus sampai
-    ke __main__ (yang cuma nangkep KeyboardInterrupt) - user lihat
-    traceback Python mentah dan APLIKASI SAMA SEKALI TIDAK BISA DIBUKA,
-    padahal banyak fitur (deteksi konten, download gambar tunggal, dll)
-    sama sekali tidak butuh ffmpeg.
+    CRITICAL bug regression: static_ffmpeg.add_paths() needs the internet to
+    download the ffmpeg binary on the FIRST attempt on that machine. If it
+    fails (offline, GitHub blocked by the office/campus firewall, etc.) and
+    the call is not wrapped in try/except, the exception reaches __main__
+    (which only catches KeyboardInterrupt) and the user sees a raw Python
+    traceback - THE APP CANNOT BE OPENED AT ALL, even though many features
+    (content detection, single-file downloads, etc.) do not need ffmpeg.
     """
     monkeypatch.setattr(
-        main.static_ffmpeg, "add_paths", lambda: (_ for _ in ()).throw(RuntimeError("gagal download ffmpeg"))
+        main.static_ffmpeg, "add_paths", lambda: (_ for _ in ()).throw(RuntimeError("failed to download ffmpeg"))
     )
     monkeypatch.setattr(main.update_checker, "check_for_update", lambda: (False, "2026.1.1", None))
     monkeypatch.setattr(main.update_checker, "check_self_update", lambda: (False, "2.0.0", None))
     monkeypatch.setattr(main.utils, "load_config", lambda: utils.get_default_config())
     monkeypatch.setattr(main.options, "show_header", lambda version: None)
-    # Langsung "q" biar main() keluar dari loop tanpa perlu interaksi lain
+    # Feed "q" directly so main() exits the loop without any other interaction
     monkeypatch.setattr(main, "try_clipboard_url", lambda config, last: (None, last))
     monkeypatch.setattr(main.Prompt, "ask", lambda *a, **k: "q")
 
-    main.main()  # TIDAK BOLEH raise apa pun
+    main.main()  # must NOT raise anything
 
 
 # ---------------------------------------------------------------------------
@@ -79,9 +78,9 @@ def test_try_clipboard_url_tracks_declined_content(monkeypatch):
 
 def test_try_clipboard_url_does_not_reask_same_content(monkeypatch):
     """
-    Regresi UX: dulu clipboard yang isinya belum berubah ditawarkan LAGI
-    setiap loop, jadi user harus jawab 'n' berulang kali padahal isinya
-    sama persis dengan yang baru saja ditolak/sudah dipakai.
+    UX regression: previously an unchanged clipboard was offered AGAIN on
+    every loop iteration, so the user had to answer 'n' over and over even
+    though the content was identical to what was just declined/used.
     """
     prompt_call_count = [0]
 
@@ -105,21 +104,21 @@ def test_try_clipboard_url_reasks_when_content_changes(monkeypatch):
     monkeypatch.setattr(main.pyperclip, "paste", lambda: "https://youtube.com/watch?v=xyz")
     monkeypatch.setattr(main.Prompt, "ask", lambda *a, **k: "y")
 
-    # last_prompted dari URL SEBELUMNYA yang beda -> harus tetap ditanya lagi
+    # last_prompted from a DIFFERENT previous URL -> must be asked again
     url, last = main.try_clipboard_url({"auto_paste": True}, last_prompted="https://youtube.com/watch?v=abc")
 
     assert url == "https://youtube.com/watch?v=xyz"
 
 
 # ---------------------------------------------------------------------------
-# main.handle_settings - ganti folder download
+# main.handle_settings - change download folder
 # ---------------------------------------------------------------------------
 
 def test_handle_settings_expands_tilde_in_folder_path(monkeypatch, tmp_path):
     """
-    User ketik path pakai "~" (mis. "~/Documents/MyDownloads") berharap itu
-    ke-resolve ke home folder-nya, bukan diperlakukan sebagai nama folder
-    relatif literal bernama "~" di dalam folder project.
+    User typed a path with "~" (e.g. "~/Documents/MyDownloads") expecting
+    it to resolve to their home folder, not a literal relative folder named
+    "~" inside the project folder.
     """
     menu_choices = iter(["1", "8"])
     monkeypatch.setattr(main.options, "show_settings_menu", lambda config: next(menu_choices))
@@ -151,9 +150,9 @@ def test_handle_settings_accepts_absolute_path_unchanged(monkeypatch, tmp_path):
 
 def test_process_url_warns_user_about_pure_playlist(tmp_path, monkeypatch):
     """
-    User berhak tahu kalau URL yang mereka paste ternyata playlist murni dan
-    cuma video pertama yang bakal didownload - daripada diam-diam cuma
-    ngasih 1 dari sekian video yang mereka kira bakal didownload semua.
+    The user deserves to know when a pasted URL is a pure playlist and only
+    the first video will be downloaded, instead of silently getting just 1
+    out of the many videos they expected all to be downloaded.
     """
     from core.detector import DetectedContent
 
@@ -171,7 +170,7 @@ def test_process_url_warns_user_about_pure_playlist(tmp_path, monkeypatch):
     monkeypatch.setattr(
         main.options, "resolve_choice", lambda content, avg_speed_bps=None: DownloadChoice(output_kind="video", fmt="mp4")
     )
-    monkeypatch.setattr(main.options, "confirm_filename", lambda filename: False)  # keluar lebih awal, cukup cek warning
+    monkeypatch.setattr(main.options, "confirm_filename", lambda filename: False)  # exit early, just check the warning
 
     printed = []
     monkeypatch.setattr(main.console, "print", lambda *a, **k: printed.append(str(a[0]) if a else ""))
@@ -179,7 +178,7 @@ def test_process_url_warns_user_about_pure_playlist(tmp_path, monkeypatch):
     main.process_url("https://www.youtube.com/playlist?list=PLxxxxxx", utils.get_default_config())
 
     warning_shown = any("playlist" in line.lower() and "3 video" in line for line in printed)
-    assert warning_shown, f"Warning playlist tidak muncul. Yang ke-print: {printed}"
+    assert warning_shown, f"Playlist warning not shown. Printed: {printed}"
 
 
 def test_process_url_no_warning_for_single_video(tmp_path, monkeypatch):

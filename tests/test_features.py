@@ -508,7 +508,7 @@ def test_ydl_logger_swallows_stderr(capsys, tmp_path, monkeypatch):
 
     monkeypatch.setattr(utils, "_user_data_dir", lambda: tmp_path)
     monkeypatch.setattr(logging.getLogger("lumenfetch.ydl"), "_lumenfetch_configured", False, raising=False)
-    # Hapus handler lama agar terkonfigurasi ulang ke tmp_path.
+    # Remove the old handler so it reconfigures to tmp_path.
     logging.getLogger("lumenfetch.ydl").handlers.clear()
 
     ydl_log = log.get_ydl_logger()

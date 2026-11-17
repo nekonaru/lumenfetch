@@ -304,7 +304,7 @@ def process_url(
             content = detect(url, cookies_browser=rt.get("cookies_browser"), cookies_file=rt.get("cookies_file"))
         except DetectionError as e:
             console.print(f"[red]{e}[/red]")
-            log.warning("detect gagal %s: %s", url, e)
+            log.warning("detect failed %s: %s", url, e)
             return False
 
     options.show_content_panel(content)
@@ -373,10 +373,10 @@ def process_url(
             )
     except DownloadCancelled:
         console.print(t("main.cancelled"))
-        log.info("download dibatalkan %s", url)
+        log.info("download cancelled %s", url)
     except DownloadFailed as e:
         console.print(f"[red]{e}[/red]")
-        log.warning("download gagal %s: %s", url, e)
+        log.warning("download failed %s: %s", url, e)
     except Exception as e:  # noqa: BLE001
         console.print(t("main.failed", e=e))
         log.exception("download error %s", url)
