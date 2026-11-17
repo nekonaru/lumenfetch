@@ -392,6 +392,10 @@ lumenfetch "https://youtube.com/watch?v=..." -t video -f mp4 -q 720p -y
 | `--write-info-json` | Save video metadata as `.info.json` next to the file |
 | `--batch` | Text file with URLs (one per line) |
 | `--jobs N` | Batch parallelism 1-4 (default 1) |
+| `--limit-rate` | Throttle download speed (e.g. `512K`, `2M`) |
+| `--concurrent-fragments N` | Download HLS fragments in parallel (1-10, default 1) |
+| `--no-overwrites` | Skip download if the output file already exists |
+| `--playlist-items` | Only download these playlist items (e.g. `1-3,7`, playlist URLs) |
 | `--no-clipboard` | Don't offer clipboard content |
 | `--ui-lang {en,id}` | Display language (default `en`, remembered after being set) |
 | `--doctor` | Diagnose setup (ffmpeg, deps, cookies, network) and exit |
@@ -411,6 +415,9 @@ lumenfetch "https://youtube.com/playlist?list=PLxxx" --playlist all -y
 
 # With subtitles embedded
 lumenfetch "https://youtube.com/watch?v=..." -t video --subs --embed-subs -y
+
+# Throttle to 1 MB/s and skip existing files
+lumenfetch "https://youtube.com/watch?v=..." -t video --limit-rate 1M --no-overwrites -y
 
 # Batch of URLs, 2 at a time
 lumenfetch --batch daftar.txt --jobs 2
@@ -583,7 +590,7 @@ Lint is enforced through `pyproject.toml` (ruff, line-length 120, rules `E`, `F`
 
 | Workflow | Purpose |
 |----------|---------|
-| `tests.yml` | pytest (Python 3.9-3.12, coverage gate 80%) and ruff on every push and pull request to `main` |
+| `tests.yml` | pytest (Python 3.9-3.14, coverage gate 80%) and ruff on every push and pull request to `main` |
 | `publish.yml` | On release published: builds `lumenfetch.exe` (with the logo icon), attaches it to the release, publishes to PyPI via trusted publishing |
 
 ---

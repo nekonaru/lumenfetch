@@ -1,5 +1,21 @@
 # Changelog
 
+## v2.3.0
+
+Flag kontrol download baru dan dukungan Python 3.13/3.14.
+
+### Fitur baru
+
+- **Batasi kecepatan download.** `--limit-rate` membatasi kecepatan download (mis. `512K`, `2M`).
+- **Fragment media paralel.** `--concurrent-fragments N` (1-10) mendownload segmen media DASH/HLS dari satu stream secara paralel.
+- **Jangan timpa.** `--no-overwrites` melewati download kalau file output sudah ada.
+- **Pilih item playlist.** `--playlist-items "1-3,7"` hanya mendownload item yang dipilih, bukan seluruh list atau cuma video pertama.
+
+### Peningkatan
+
+- **Python 3.13 dan 3.14** diuji di CI dan dicantumkan di classifier package.
+- **Tanpa dependency baru.** Flag baru diimplementasikan di atas opsi yt-dlp sendiri.
+
 ## v2.2.0
 
 Startup lebih cepat dan pipeline rilis lebih ramping.

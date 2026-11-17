@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,12 +21,65 @@ if TYPE_CHECKING:
     # Only needed for annotations; importing it at runtime pulls in rich.
     from core.options import DownloadChoice
 
+_RATE_RE = re.compile(r"^([0-9]+(?:\.[0-9]+)?)\s*([BKMGT])?B?$", re.IGNORECASE)
+_FRAGMENTS_RE = re.compile(r"^[0-9]{1,2}$")
+_PLAYLIST_ITEMS_RE = re.compile(r"^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$")
+_RATE_UNITS = {"B": 1, "K": 1024, "M": 1024 * 1024, "G": 1024 * 1024 * 1024, "T": 1024 * 1024 * 1024 * 1024}
+
 __all__ = [
     "parse_args",
     "apply_cli_overrides",
     "build_choice_from_args",
     "read_batch_file",
+    "parse_rate",
 ]
+
+
+def parse_rate(value: str) -> int:
+    """Parse a rate like '512K', '2M', '1048576', or '2MB' into bytes per second."""
+    m = _RATE_RE.match(str(value).strip())
+    if not m:
+        raise argparse.ArgumentTypeError(f"expected a rate like '512K', '2M' or plain bytes, got {value!r}")
+    if m.group(2) is None and "." in m.group(1):
+        raise argparse.ArgumentTypeError(f"a fractional rate needs a unit, e.g. '1.5M', got {value!r}")
+    number = float(m.group(1))
+    unit = (m.group(2) or "B").upper()
+    rate = int(number * _RATE_UNITS[unit])
+    if rate <= 0:
+        raise argparse.ArgumentTypeError("rate must be positive")
+    return rate
+
+
+def _fragments_arg(value: str) -> int:
+    text = str(value).strip()
+    if not _FRAGMENTS_RE.match(text):
+        raise argparse.ArgumentTypeError(f"expected an integer 1-10, got {value!r}")
+    n = int(text, 10)
+    if not 1 <= n <= 10:
+        raise argparse.ArgumentTypeError(f"--concurrent-fragments must be between 1 and 10, got {n}")
+    return n
+
+
+def _playlist_items_arg(value: str) -> str:
+    v = str(value).strip().replace(" ", "")
+    if not _PLAYLIST_ITEMS_RE.match(v):
+        raise argparse.ArgumentTypeError(f"expected syntax like '1-3,7', got {value!r}")
+    seen: set[int] = set()
+    for part in v.split(","):
+        start, _, end = part.partition("-")
+        a = int(start)
+        b = int(end) if end else a
+        if a > b:
+            raise argparse.ArgumentTypeError(f"reversed playlist range: {part!r}")
+        if a < 1:
+            raise argparse.ArgumentTypeError("playlist item numbers start at 1")
+        for i in range(a, b + 1):
+            if len(seen) >= 10000:
+                raise argparse.ArgumentTypeError("too many playlist items selected (max 10000)")
+            if i in seen:
+                raise argparse.ArgumentTypeError(f"duplicate playlist item: {i}")
+            seen.add(i)
+    return v
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -50,6 +104,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--write-info-json", action="store_true", help="Save video metadata as .info.json next to the file")
     p.add_argument("--batch", default=None, help="Text file with URLs (one per line)")
     p.add_argument("--jobs", type=int, default=BATCH_DEFAULT_JOBS, help=f"Batch parallelism 1-{BATCH_MAX_JOBS} (default 1)")
+    p.add_argument("--limit-rate", dest="limit_rate", type=parse_rate, default=None, metavar="RATE", help="Throttle download speed (e.g. 512K, 2M)")
+    p.add_argument("--concurrent-fragments", dest="concurrent_fragments", type=_fragments_arg, default=None, metavar="N", help="Download HLS fragments in parallel (1-10, default 1)")
+    p.add_argument("--no-overwrites", dest="no_overwrites", action="store_true", help="Skip download if the output file already exists")
+    p.add_argument("--playlist-items", dest="playlist_items", type=_playlist_items_arg, default=None, metavar="ITEMS", help="Only download these playlist items (e.g. '1-3,7'; playlist URLs)")
     p.add_argument("--no-clipboard", action="store_true")
     p.add_argument("--yes", "-y", action="store_true", help="Skip the filename confirmation")
     p.add_argument("--verbose", "-v", action="store_true", help="Detailed logging to file + console")
@@ -82,6 +140,14 @@ def apply_cli_overrides(choice: DownloadChoice, args: argparse.Namespace) -> Dow
         choice.sponsorblock = [c.strip().lower() for c in sponsor_cats if c.strip()] or ["sponsor"]
     if getattr(args, "write_info_json", False):
         choice.write_info_json = True
+    if getattr(args, "limit_rate", None) is not None:
+        choice.limit_rate = args.limit_rate
+    if getattr(args, "concurrent_fragments", None):
+        choice.concurrent_fragments = args.concurrent_fragments
+    if getattr(args, "no_overwrites", False):
+        choice.no_overwrites = True
+    if getattr(args, "playlist_items", None):
+        choice.playlist_items = args.playlist_items
     return choice
 
 

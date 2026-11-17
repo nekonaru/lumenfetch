@@ -687,3 +687,136 @@ def test_version_sync_pyproject():
     match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
     assert match is not None
     assert match.group(1) == VERSION
+
+
+def test_parse_rate_units():
+    from core.cli import parse_rate
+
+    assert parse_rate("512K") == 512 * 1024
+    assert parse_rate("2M") == 2 * 1024 * 1024
+    assert parse_rate("1048576") == 1048576
+    assert parse_rate("1.5G") == int(1.5 * 1024 * 1024 * 1024)
+    assert parse_rate("2MB") == 2 * 1024 * 1024
+
+
+def test_parse_rate_rejects_nonsense():
+    import argparse
+
+    from core.cli import parse_rate
+
+    with pytest.raises(argparse.ArgumentTypeError):
+        parse_rate("fast")
+    with pytest.raises(argparse.ArgumentTypeError):
+        parse_rate("-1M")
+    with pytest.raises(argparse.ArgumentTypeError):
+        parse_rate("0")
+
+
+def test_parse_args_new_flags():
+    args = main.parse_args(
+        [
+            "https://youtube.com/watch?v=abc",
+            "--limit-rate",
+            "2M",
+            "--concurrent-fragments",
+            "4",
+            "--no-overwrites",
+            "--playlist-items",
+            "1-3,7",
+        ]
+    )
+    assert args.limit_rate == 2 * 1024 * 1024
+    assert args.concurrent_fragments == 4
+    assert args.no_overwrites is True
+    assert args.playlist_items == "1-3,7"
+
+
+def test_parse_args_invalid_limit_rate_exits():
+    with pytest.raises(SystemExit):
+        main.parse_args(["https://x", "--limit-rate", "fast"])
+
+
+def test_parse_args_invalid_fragments_exits():
+    with pytest.raises(SystemExit):
+        main.parse_args(["https://x", "--concurrent-fragments", "11"])
+
+
+def test_parse_args_invalid_playlist_items_exits():
+    with pytest.raises(SystemExit):
+        main.parse_args(["https://x", "--playlist-items", "3-1"])
+
+
+def test_build_choice_from_args_carries_new_flags():
+    content = _content()
+    args = main.parse_args(
+        [
+            "https://youtube.com/watch?v=abc",
+            "--limit-rate",
+            "1M",
+            "--concurrent-fragments",
+            "3",
+            "--no-overwrites",
+            "--playlist-items",
+            "2",
+        ]
+    )
+    choice = main.build_choice_from_args(content, args)
+    assert choice.limit_rate == 1024 * 1024
+    assert choice.concurrent_fragments == 3
+    assert choice.no_overwrites is True
+    assert choice.playlist_items == "2"
+
+
+def test_parse_rate_unitless_fraction_rejected():
+    import argparse
+
+    from core.cli import parse_rate
+
+    with pytest.raises(argparse.ArgumentTypeError):
+        parse_rate("1.5")
+
+
+def test_parse_args_concurrent_fragments_boundary():
+    args = main.parse_args(["https://youtube.com/watch?v=abc", "--concurrent-fragments", "10"])
+    assert args.concurrent_fragments == 10
+
+
+def test_parse_args_fractional_limit_rate_exits():
+    with pytest.raises(SystemExit):
+        main.parse_args(["https://x", "--limit-rate", "1.5"])
+
+
+def test_parse_args_playlist_items_duplicate_rejected():
+    with pytest.raises(SystemExit):
+        main.parse_args(["https://x", "--playlist-items", "1,1"])
+
+
+def test_parse_args_playlist_items_zero_rejected():
+    with pytest.raises(SystemExit):
+        main.parse_args(["https://x", "--playlist-items", "0"])
+
+
+def test_limit_rate_alone_forces_non_interactive_mode(monkeypatch):
+    captured = {}
+
+    def fake_detect(url, cookies_browser=None, cookies_file=None):
+        return _content(url=url, title="T")
+
+    def fake_process_url(url, config, **kwargs):
+        captured.update(kwargs)
+        return True
+
+    monkeypatch.setattr(main, "detect", fake_detect)
+    monkeypatch.setattr(main, "process_url", fake_process_url)
+    monkeypatch.setattr(main.utils, "load_config", lambda: utils.get_default_config())
+    monkeypatch.setattr(main.utils, "save_config", lambda config: None)
+    monkeypatch.setattr(main.update_checker, "check_for_update", lambda: (False, "2026.1.1", None))
+    monkeypatch.setattr(main.update_checker, "check_self_update", lambda: (False, "2.3.0", None))
+    monkeypatch.setattr(main.options, "show_header", lambda version: None)
+
+    code = main.main(["https://youtube.com/watch?v=abc", "--limit-rate", "1M"])
+
+    assert code == 0
+    choice = captured.get("choice_override")
+    assert choice is not None
+    assert choice.limit_rate == 1024 * 1024
