@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lumenfetch"
-version = "2.2.0"
+version = "2.3.0"
 description = "Save any YouTube video as MP4 or MP3 with a quality picker, subtitles, and playlists, right from your terminal."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -22,17 +22,19 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Multimedia :: Video",
     "Topic :: Utilities",
 ]
 dependencies = [
     "yt-dlp",
     "rich",
-    # Wajib untuk lolos bot-check YouTube (TLS impersonation).
+    # Required to pass YouTube's bot checks (TLS impersonation).
     "curl_cffi",
-    # Opsional tapi direkomendasikan (degraded gracefully kalau absen):
-    # - pyperclip: auto-paste clipboard
-    # - static-ffmpeg: ffmpeg bundled (merge MP4 & ekstrak MP3)
+    # Optional but recommended (degraded gracefully when absent):
+    # - pyperclip: auto-paste from the clipboard
+    # - static-ffmpeg: bundled ffmpeg (merge MP4 & extract MP3)
     "pyperclip",
     "static-ffmpeg",
 ]

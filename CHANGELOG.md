@@ -1,5 +1,21 @@
 # Changelog
 
+## v2.3.0
+
+New download control flags and Python 3.13/3.14 support.
+
+### New features
+
+- **Throttle downloads.** `--limit-rate` caps the download speed (for example `512K`, `2M`).
+- **Parallel HLS fragments.** `--concurrent-fragments N` (1-10) downloads playlist fragments concurrently (default 1).
+- **Never overwrite.** `--no-overwrites` skips a download when the output file already exists.
+- **Pick playlist items.** `--playlist-items "1-3,7"` downloads only the chosen items instead of the whole list or just the first one.
+
+### Improvements
+
+- **Python 3.13 and 3.14** are tested in CI and listed in the package classifiers.
+- **Zero new dependencies.** The new flags are implemented on yt-dlp's own options.
+
 ## v2.2.0
 
 Startup is faster and the release pipeline is leaner.

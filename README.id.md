@@ -392,6 +392,10 @@ lumenfetch "https://youtube.com/watch?v=..." -t video -f mp4 -q 720p -y
 | `--write-info-json` | Simpan metadata video sebagai `.info.json` di sebelah file |
 | `--batch` | File teks berisi daftar URL (satu per baris) |
 | `--jobs N` | Paralel batch 1-4 (default 1) |
+| `--limit-rate` | Batasi kecepatan download (mis. `512K`, `2M`) |
+| `--concurrent-fragments N` | Download fragment HLS secara paralel (1-10, default 1) |
+| `--no-overwrites` | Lewati download kalau file output sudah ada |
+| `--playlist-items` | Download hanya item playlist ini (mis. `1-3,7`) |
 | `--no-clipboard` | Jangan tawarkan isi clipboard |
 | `--ui-lang {en,id}` | Bahasa tampilan CLI (default `en`, diingat setelah dipilih) |
 | `--doctor` | Diagnosa setup (ffmpeg, dep, cookies, jaringan) lalu keluar |
@@ -411,6 +415,9 @@ lumenfetch "https://youtube.com/playlist?list=PLxxx" --playlist all -y
 
 # Dengan subtitle ter-embed
 lumenfetch "https://youtube.com/watch?v=..." -t video --subs --embed-subs -y
+
+# Batasi 1 MB/s dan lewati file yang sudah ada
+lumenfetch "https://youtube.com/watch?v=..." -t video --limit-rate 1M --no-overwrites -y
 
 # Batch banyak URL, 2 paralel
 lumenfetch --batch daftar.txt --jobs 2
@@ -583,7 +590,7 @@ Lint ditegakkan lewat `pyproject.toml` (ruff, line-length 120, rule `E`, `F`, `I
 
 | Workflow | Tujuan |
 |----------|--------|
-| `tests.yml` | pytest (Python 3.9-3.12, coverage gate 80%) dan ruff di setiap push dan pull request ke `main` |
+| `tests.yml` | pytest (Python 3.9-3.14, coverage gate 80%) dan ruff di setiap push dan pull request ke `main` |
 | `publish.yml` | Saat release dipublish: build `lumenfetch.exe` (dengan icon logo), lampirkan ke release, publish ke PyPI lewat trusted publishing |
 
 ---
