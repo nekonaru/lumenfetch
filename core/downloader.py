@@ -159,6 +159,18 @@ def _friendly_message(kind: str) -> str:
     return friendly_message(kind)
 
 
+def _playlist_items_count(items: str | None) -> int:
+    """Total number of playlist indices covered by a selection like '1-3,7'."""
+    if not items:
+        return 0
+    total = 0
+    for part in items.split(","):
+        start, _, end = part.partition("-")
+        b = int(end) if end else int(start)
+        total += b - int(start) + 1
+    return total
+
+
 def backoff_delay(attempt: int) -> float:
     """Exponential delay for retry `attempt` (1-indexed), capped at max + jitter."""
     import random
@@ -234,10 +246,14 @@ def download(
     filename = build_filename(content.platform, content.title, ext, naming_template)
 
     entries_count = len(getattr(content, "entries", None) or [])
-    playlist_all = getattr(choice, "playlist_mode", "single") == PLAYLIST_MODE_ALL and entries_count > 1
+    picked_items = getattr(choice, "playlist_items", None)
+    # An explicit multi-item selection must be downloaded as indexed files,
+    # just like --playlist all, or every item would land in one shared path.
+    picked_multi = picked_items is not None and _playlist_items_count(picked_items) > 1 and entries_count > 1
+    playlist_all = (getattr(choice, "playlist_mode", "single") == PLAYLIST_MODE_ALL and entries_count > 1) or picked_multi
     # "noplaylist" has no effect for pure playlist URLs (yt-dlp #5215):
-    # force the first entry when in single mode.
-    force_single_item = not playlist_all and entries_count > 1
+    # force the first entry when in single mode without an explicit selection.
+    force_single_item = not playlist_all and entries_count > 1 and picked_items is None
 
     dest, token = _reserve_dest(output_folder / filename, multi_item=playlist_all)
 

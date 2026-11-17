@@ -606,3 +606,41 @@ def test_playlist_items_forces_selection(tmp_path):
     choice = DownloadChoice(output_kind="video", quality="Best", fmt="mp4", playlist_items="4,6")
     opts = downloader._build_ydl_opts(choice, tmp_path / "v.mp4", force_single_item=False, playlist_all=True)
     assert opts["playlist_items"] == "4,6"
+
+
+def test_download_playlist_items_multi_uses_indexed_outtmpl(tmp_path, monkeypatch):
+    captured_opts = {}
+
+    class FakeYDL:
+        def __init__(self, opts):
+            captured_opts.update(opts)
+            self.opts = opts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def download(self, urls):
+            from pathlib import Path as _P
+
+            base = self.opts["outtmpl"].rsplit(".", 1)[0]
+            for index in ("1", "2"):
+                _P(base.replace("%(playlist_index,autonumber)d", index) + ".mp4").write_bytes(b"multi-" + index.encode())
+
+    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", FakeYDL)
+
+    class FakePlaylistContent:
+        url = "https://www.youtube.com/playlist?list=PLxxxxxx"
+        platform = "YouTube"
+        title = "Judul Playlist"
+        entries = [{"url": "v1"}, {"url": "v2"}, {"url": "v3"}]
+
+    choice = DownloadChoice(output_kind="video", quality="Best", fmt="mp4", playlist_items="1-2")
+    result = downloader.download(FakePlaylistContent(), choice, tmp_path, "%(title)s")
+
+    assert captured_opts.get("playlist_items") == "1-2"
+    assert captured_opts.get("noplaylist") is False
+    assert "%(playlist_index,autonumber)d" in captured_opts.get("outtmpl", "")
+    assert result.file_count == 2

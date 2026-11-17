@@ -7,7 +7,7 @@ New download control flags and Python 3.13/3.14 support.
 ### New features
 
 - **Throttle downloads.** `--limit-rate` caps the download speed (for example `512K`, `2M`).
-- **Parallel HLS fragments.** `--concurrent-fragments N` (1-10) downloads playlist fragments concurrently (default 1).
+- **Parallel media fragments.** `--concurrent-fragments N` (1-10) downloads DASH/HLS media segments of a single stream concurrently.
 - **Never overwrite.** `--no-overwrites` skips a download when the output file already exists.
 - **Pick playlist items.** `--playlist-items "1-3,7"` downloads only the chosen items instead of the whole list or just the first one.
 

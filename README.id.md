@@ -395,7 +395,7 @@ lumenfetch "https://youtube.com/watch?v=..." -t video -f mp4 -q 720p -y
 | `--limit-rate` | Batasi kecepatan download (mis. `512K`, `2M`) |
 | `--concurrent-fragments N` | Download fragment HLS secara paralel (1-10, default 1) |
 | `--no-overwrites` | Lewati download kalau file output sudah ada |
-| `--playlist-items` | Download hanya item playlist ini (mis. `1-3,7`) |
+| `--playlist-items` | Download hanya item playlist ini (mis. `1-3,7`, khusus URL playlist) |
 | `--no-clipboard` | Jangan tawarkan isi clipboard |
 | `--ui-lang {en,id}` | Bahasa tampilan CLI (default `en`, diingat setelah dipilih) |
 | `--doctor` | Diagnosa setup (ffmpeg, dep, cookies, jaringan) lalu keluar |

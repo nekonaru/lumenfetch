@@ -395,7 +395,7 @@ lumenfetch "https://youtube.com/watch?v=..." -t video -f mp4 -q 720p -y
 | `--limit-rate` | Throttle download speed (e.g. `512K`, `2M`) |
 | `--concurrent-fragments N` | Download HLS fragments in parallel (1-10, default 1) |
 | `--no-overwrites` | Skip download if the output file already exists |
-| `--playlist-items` | Only download these playlist items (e.g. `1-3,7`) |
+| `--playlist-items` | Only download these playlist items (e.g. `1-3,7`, playlist URLs) |
 | `--no-clipboard` | Don't offer clipboard content |
 | `--ui-lang {en,id}` | Display language (default `en`, remembered after being set) |
 | `--doctor` | Diagnose setup (ffmpeg, deps, cookies, network) and exit |

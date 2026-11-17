@@ -495,6 +495,9 @@ def main(argv: list[str] | None = None) -> int:
         _maybe_show_updates()
         non_interactive = bool(
             args.output_type or args.fmt or args.quality or args.yes or args.playlist or args.subs or args.embed_metadata or args.embed_subs
+            or args.sponsorblock or args.write_info_json
+            or args.limit_rate is not None or args.concurrent_fragments is not None or args.no_overwrites
+            or args.playlist_items is not None
         )
         if non_interactive:
             try:

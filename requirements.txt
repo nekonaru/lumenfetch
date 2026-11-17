@@ -1,4 +1,4 @@
-﻿# Versions are intentionally NOT pinned (e.g. "yt-dlp==2026.1.1"): YouTube
+# Versions are intentionally NOT pinned (e.g. "yt-dlp==2026.1.1"): YouTube
 # changes its systems often, and yt-dlp needs regular updates to stay
 # compatible (see core/update_checker.py). Run "pip install --upgrade yt-dlp"
 # periodically.
