@@ -285,12 +285,15 @@ def process_url(
     playlist_mode: str | None = None,
     runtime: dict | None = None,
     content_override=None,
+    dry_run: bool = False,
 ) -> bool:
     """Process a single YouTube URL. Return True on success.
 
     `config` is the persisted object (history is saved into it); `runtime`
     optionally carries temporary CLI overrides for everything else.
     Pass `content_override` to skip re-detection (batch mode already probed).
+    With `dry_run`, only the detection and the resolved plan are reported;
+    nothing is downloaded and ffmpeg is not required.
     """
     from core.log import get_logger  # noqa: PLC0415
 
@@ -304,7 +307,7 @@ def process_url(
             content = detect(url, cookies_browser=rt.get("cookies_browser"), cookies_file=rt.get("cookies_file"))
         except DetectionError as e:
             console.print(f"[red]{e}[/red]")
-            log.warning("detect gagal %s: %s", url, e)
+            log.warning("detect failed %s: %s", url, e)
             return False
 
     options.show_content_panel(content)
@@ -319,6 +322,11 @@ def process_url(
         choice = options.resolve_choice(content, avg_speed_bps)
         if playlist_mode:
             choice.playlist_mode = playlist_mode
+
+    if dry_run:
+        filename_preview = utils.build_filename(content.platform, content.title, choice.fmt, rt["naming_template"])
+        console.print(t("main.dry_run", name=filename_preview))
+        return True
 
     _ensure_ffmpeg()
 
@@ -373,10 +381,10 @@ def process_url(
             )
     except DownloadCancelled:
         console.print(t("main.cancelled"))
-        log.info("download dibatalkan %s", url)
+        log.info("download cancelled %s", url)
     except DownloadFailed as e:
         console.print(f"[red]{e}[/red]")
-        log.warning("download gagal %s: %s", url, e)
+        log.warning("download failed %s: %s", url, e)
     except Exception as e:  # noqa: BLE001
         console.print(t("main.failed", e=e))
         log.exception("download error %s", url)
@@ -390,6 +398,8 @@ def process_batch(urls: list[str], config: dict, args: argparse.Namespace, runti
     rt = runtime or config
     jobs = max(1, min(int(getattr(args, "jobs", 1) or 1), BATCH_MAX_JOBS))
     results: dict = {"total": len(urls), "success": 0, "failed": 0, "failed_urls": []}
+
+    dry_run = getattr(args, "dry_run", False)
 
     def _one(u: str) -> bool:
         try:
@@ -411,6 +421,7 @@ def process_batch(urls: list[str], config: dict, args: argparse.Namespace, runti
                 playlist_mode=args.playlist,
                 runtime=rt,
                 content_override=probe,
+                dry_run=dry_run,
             )
         except Exception as e:  # noqa: BLE001
             console.print(f"[red]{u}: {e}[/red]")
@@ -483,7 +494,10 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         options.show_header(VERSION)
         summary = process_batch(urls, config, args, runtime=session)
-        console.print(t("main.batch_done", ok=summary["success"], total=summary["total"]))
+        if args.dry_run:
+            console.print(t("main.batch_dry_run_done", ok=summary["success"], total=summary["total"]))
+        else:
+            console.print(t("main.batch_done", ok=summary["success"], total=summary["total"]))
         if summary.get("failed_urls"):
             console.print(t("main.batch_failed_urls"))
             for u in summary["failed_urls"]:
@@ -495,9 +509,9 @@ def main(argv: list[str] | None = None) -> int:
         _maybe_show_updates()
         non_interactive = bool(
             args.output_type or args.fmt or args.quality or args.yes or args.playlist or args.subs or args.embed_metadata or args.embed_subs
-            or args.sponsorblock or args.write_info_json
+            or args.sponsorblock or args.sponsorblock_chapters is not None or args.write_info_json
             or args.limit_rate is not None or args.concurrent_fragments is not None or args.no_overwrites
-            or args.playlist_items is not None
+            or args.playlist_items is not None or args.audio_format is not None or args.dry_run
         )
         if non_interactive:
             try:
@@ -511,10 +525,10 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
             choice = build_choice_from_args(content, args)
             ok = process_url(
-                args.url, config, choice_override=choice, auto_confirm=True, playlist_mode=args.playlist, runtime=session
+                args.url, config, choice_override=choice, auto_confirm=True, playlist_mode=args.playlist, runtime=session, dry_run=args.dry_run
             )
             return 0 if ok else 1
-        process_url(args.url, config, playlist_mode=args.playlist, runtime=session)
+        process_url(args.url, config, playlist_mode=args.playlist, runtime=session, dry_run=args.dry_run)
         return 0
 
     options.show_header(VERSION)
@@ -554,14 +568,14 @@ def main(argv: list[str] | None = None) -> int:
             continue
 
         try:
-            process_url(raw, config, runtime=session)
+            process_url(raw, config, runtime=session, dry_run=args.dry_run)
         except Exception as e:  # noqa: BLE001
             console.print(t("main.unexpected", e=e))
 
         nxt = options.ask_again_or_url()
         if isinstance(nxt, str):
             try:
-                process_url(nxt, config, runtime=session)
+                process_url(nxt, config, runtime=session, dry_run=args.dry_run)
             except Exception as e:  # noqa: BLE001
                 console.print(t("main.unexpected", e=e))
             continue

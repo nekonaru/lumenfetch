@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-VERSION = "2.3.0"
+VERSION = "2.4.0"
 
 # --- Config ---
 HISTORY_LIMIT = 20
@@ -38,6 +38,8 @@ AUDIO_QUALITIES = ["Best", "320kbps", "192kbps", "128kbps"]
 
 # Video containers supported by yt-dlp's EmbedThumbnailPP.
 EMBEDDABLE_VIDEO_FORMATS = frozenset({"mp4"})
+
+AUDIO_CODEC_TO_EXT = {"aac": "m4a"}
 
 # --- Download ---
 CONNECTION_ERROR_HINTS = (

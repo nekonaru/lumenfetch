@@ -377,7 +377,7 @@ lumenfetch "https://youtube.com/watch?v=..." -t video -f mp4 -q 720p -y
 |---|---|
 | `url` | YouTube video/playlist URL. Filling this enables non-interactive mode when combined with other flags. |
 | `-t/--type {video,audio}` | Output type |
-| `-f/--format {mp4,mp3}` | Output format |
+| `-f/--format {mp4,mp3,m4a,opus,aac,flac,wav}` | Output format (`mp4` video; audio codecs `mp3`/`m4a`/`opus`/`aac`/`flac`/`wav`) |
 | `-q/--quality` | Video quality (Best/1080p/720p/480p/360p/Worst) or MP3 bitrate (Best/320kbps/192kbps/128kbps) |
 | `-o/--output` | Custom output folder |
 | `--cookies` | Browser cookies (chrome/firefox/edge/brave/opera/vivaldi/safari/none) |
@@ -396,6 +396,9 @@ lumenfetch "https://youtube.com/watch?v=..." -t video -f mp4 -q 720p -y
 | `--concurrent-fragments N` | Download HLS fragments in parallel (1-10, default 1) |
 | `--no-overwrites` | Skip download if the output file already exists |
 | `--playlist-items` | Only download these playlist items (e.g. `1-3,7`, playlist URLs) |
+| `--audio-format` | Audio codec for extraction (mp3 default; `m4a`, `opus`, `aac`, `flac`, `wav`) |
+| `--sponsorblock-chapters` | Mark SponsorBlock segments as chapters instead of skipping them (e.g. `--sponsorblock-chapters sponsor intro outro`) |
+| `--dry-run` | Detect and report what would be downloaded without downloading |
 | `--no-clipboard` | Don't offer clipboard content |
 | `--ui-lang {en,id}` | Display language (default `en`, remembered after being set) |
 | `--doctor` | Diagnose setup (ffmpeg, deps, cookies, network) and exit |
@@ -418,6 +421,12 @@ lumenfetch "https://youtube.com/watch?v=..." -t video --subs --embed-subs -y
 
 # Throttle to 1 MB/s and skip existing files
 lumenfetch "https://youtube.com/watch?v=..." -t video --limit-rate 1M --no-overwrites -y
+
+# Save as opus with the SponsorBlock segments marked as chapters
+lumenfetch "https://youtube.com/watch?v=..." -t audio --audio-format opus --sponsorblock-chapters -y
+
+# See what would be downloaded without downloading
+lumenfetch "https://youtube.com/watch?v=..." --dry-run
 
 # Batch of URLs, 2 at a time
 lumenfetch --batch daftar.txt --jobs 2

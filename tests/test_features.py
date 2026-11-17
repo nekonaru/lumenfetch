@@ -508,7 +508,7 @@ def test_ydl_logger_swallows_stderr(capsys, tmp_path, monkeypatch):
 
     monkeypatch.setattr(utils, "_user_data_dir", lambda: tmp_path)
     monkeypatch.setattr(logging.getLogger("lumenfetch.ydl"), "_lumenfetch_configured", False, raising=False)
-    # Hapus handler lama agar terkonfigurasi ulang ke tmp_path.
+    # Remove the old handler so it reconfigures to tmp_path.
     logging.getLogger("lumenfetch.ydl").handlers.clear()
 
     ydl_log = log.get_ydl_logger()
@@ -820,3 +820,111 @@ def test_limit_rate_alone_forces_non_interactive_mode(monkeypatch):
     choice = captured.get("choice_override")
     assert choice is not None
     assert choice.limit_rate == 1024 * 1024
+
+
+def test_build_choice_audio_format_opus():
+    content = _content(content_type="AUDIO")
+    args = main.parse_args(["https://youtube.com/watch?v=abc", "-t", "audio", "--audio-format", "opus"])
+    choice = main.build_choice_from_args(content, args)
+    assert choice.fmt == "opus"
+    assert choice.audio_format == "opus"
+
+
+def test_apply_cli_overrides_sponsorblock_chapters():
+    choice = DownloadChoice(output_kind="video", quality="Best", fmt="mp4")
+    args = main.parse_args(["https://x", "--sponsorblock-chapters"])
+    main.apply_cli_overrides(choice, args)
+    assert choice.sponsorblock_chapters == ["sponsor"]
+    args2 = main.parse_args(["https://x", "--sponsorblock-chapters", "intro", "outro"])
+    main.apply_cli_overrides(choice, args2)
+    assert choice.sponsorblock_chapters == ["intro", "outro"]
+
+
+def test_dry_run_reports_without_downloading(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(main, "detect", lambda *a, **k: _content(url="https://x", title="Dry Run Title"))
+    monkeypatch.setattr(main.options, "show_content_panel", lambda c: None)
+    monkeypatch.setattr(main.options, "resolve_choice", lambda c, avg_speed_bps=None: DownloadChoice(output_kind="video", quality="Best", fmt="mp4"))
+
+    def _boom(*a, **k):
+        raise AssertionError("download must not run in dry-run mode")
+
+    monkeypatch.setattr(main, "download", _boom)
+    monkeypatch.setattr(main, "_ensure_ffmpeg", _boom)
+
+    ok = main.process_url("https://x", utils.get_default_config(), dry_run=True)
+
+    assert ok is True
+    out = capsys.readouterr().out
+    assert "dry-run" in out.lower()
+
+
+def test_dry_run_forces_non_interactive_mode(monkeypatch):
+    captured = {}
+
+    monkeypatch.setattr(main, "detect", lambda *a, **k: _content(url="https://x", title="T"))
+    monkeypatch.setattr(main, "process_url", lambda url, config, **kwargs: captured.update(kwargs) or True)
+    monkeypatch.setattr(main.utils, "load_config", lambda: utils.get_default_config())
+    monkeypatch.setattr(main.utils, "save_config", lambda config: None)
+    monkeypatch.setattr(main.update_checker, "check_for_update", lambda: (False, "2026.1.1", None))
+    monkeypatch.setattr(main.update_checker, "check_self_update", lambda: (False, "2.4.0", None))
+    monkeypatch.setattr(main.options, "show_header", lambda version: None)
+
+    code = main.main(["https://youtube.com/watch?v=abc", "--dry-run"])
+
+    assert code == 0
+    assert captured.get("dry_run") is True
+
+
+def test_audio_format_wins_over_shorthand_fmt():
+    content = _content(content_type="AUDIO")
+    args = main.parse_args(["https://youtube.com/watch?v=abc", "-t", "audio", "-f", "mp3", "--audio-format", "m4a"])
+    choice = main.build_choice_from_args(content, args)
+    assert choice.fmt == "m4a"
+    assert choice.audio_format == "m4a"
+
+
+def test_audio_format_shorthand_fmt_only():
+    content = _content(content_type="AUDIO")
+    args = main.parse_args(["https://youtube.com/watch?v=abc", "-t", "audio", "-f", "m4a"])
+    choice = main.build_choice_from_args(content, args)
+    assert choice.fmt == "m4a"
+    assert choice.audio_format == "m4a"
+
+
+def test_audio_format_aac_maps_to_m4a_extension():
+    content = _content(content_type="AUDIO")
+    args = main.parse_args(["https://youtube.com/watch?v=abc", "-t", "audio", "--audio-format", "aac"])
+    choice = main.build_choice_from_args(content, args)
+    assert choice.audio_format == "aac"
+    assert choice.fmt == "m4a"
+
+
+def test_sponsorblock_chapters_invalid_category_rejected():
+    with pytest.raises(SystemExit):
+        main.parse_args(["https://x", "--sponsorblock-chapters", "bogus"])
+
+
+def test_sponsorblock_invalid_category_rejected():
+    with pytest.raises(SystemExit):
+        main.parse_args(["https://x", "--sponsorblock", "bogus"])
+
+
+def test_audio_format_ignored_warns_for_video(capsys):
+    content = _content(content_type="VIDEO")
+    args = main.parse_args(["https://youtube.com/watch?v=abc", "-t", "video", "--audio-format", "opus"])
+    main.build_choice_from_args(content, args)
+    assert "--audio-format" in capsys.readouterr().out
+
+
+def test_dry_run_does_not_record_history(tmp_path, monkeypatch):
+    recorded = []
+    monkeypatch.setattr(main.utils, "add_history_entry", lambda c, e: recorded.append(e))
+    monkeypatch.setattr(main, "detect", lambda *a, **k: _content(url="https://x", title="T"))
+    monkeypatch.setattr(main.options, "show_content_panel", lambda c: None)
+    monkeypatch.setattr(main.options, "resolve_choice", lambda c, avg_speed_bps=None: DownloadChoice(output_kind="video", quality="Best", fmt="mp4"))
+    monkeypatch.setattr(main, "download", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no download in dry-run")))
+
+    ok = main.process_url("https://x", utils.get_default_config(), dry_run=True)
+
+    assert ok is True
+    assert recorded == []

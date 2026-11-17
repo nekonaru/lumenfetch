@@ -644,3 +644,30 @@ def test_download_playlist_items_multi_uses_indexed_outtmpl(tmp_path, monkeypatc
     assert captured_opts.get("noplaylist") is False
     assert "%(playlist_index,autonumber)d" in captured_opts.get("outtmpl", "")
     assert result.file_count == 2
+
+
+def test_audio_format_non_mp3_preferredcodec(tmp_path):
+    choice = DownloadChoice(output_kind="audio", quality="Best", fmt="m4a", audio_format="m4a")
+    opts = downloader._build_ydl_opts(choice, tmp_path / "lagu.m4a")
+    assert opts["postprocessors"][0]["key"] == "FFmpegExtractAudio"
+    assert opts["postprocessors"][0]["preferredcodec"] == "m4a"
+
+
+def test_audio_format_default_mp3_preferredcodec(tmp_path):
+    choice = DownloadChoice(output_kind="audio", quality="Best", fmt="mp3")
+    opts = downloader._build_ydl_opts(choice, tmp_path / "lagu.mp3")
+    assert opts["postprocessors"][0]["preferredcodec"] == "mp3"
+
+
+def test_sponsorblock_chapters_option(tmp_path):
+    choice = DownloadChoice(output_kind="video", quality="Best", fmt="mp4", sponsorblock_chapters=["sponsor", "intro"])
+    opts = downloader._build_ydl_opts(choice, tmp_path / "v.mp4")
+    assert opts["sponsorblock_mark"] == ["sponsor", "intro"]
+    assert "sponsorblock_remove" not in opts
+
+
+def test_sponsorblock_and_chapters_coexist(tmp_path):
+    choice = DownloadChoice(output_kind="video", quality="Best", fmt="mp4", sponsorblock=["intro"], sponsorblock_chapters=["sponsor"])
+    opts = downloader._build_ydl_opts(choice, tmp_path / "v.mp4")
+    assert opts["sponsorblock_remove"] == ["intro"]
+    assert opts["sponsorblock_mark"] == ["sponsor"]

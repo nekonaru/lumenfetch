@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.4.0
+
+New audio codecs, chapter-based SponsorBlock marking, and a dry-run mode.
+
+### New features
+
+- **Audio codecs.** `--audio-format` picks the codec for audio extraction (`mp3` default, plus `m4a`, `opus`, `aac`, `flac`, `wav`). `-f` accepts the same audio codecs.
+- **SponsorBlock chapters.** `--sponsorblock-chapters` marks segments as chapters in the output file instead of skipping them. Pass an empty list to mark only the `sponsor` category.
+- **Dry run.** `--dry-run` detects and prints the plan (title, filename, type, duration) without downloading or requiring ffmpeg.
+
 ## v2.3.0
 
 New download control flags and Python 3.13/3.14 support.

@@ -1,7 +1,7 @@
-"""conftest.py - Fixture global test.
+"""conftest.py - Global test fixtures.
 
-Semua sleep (retry backoff) di-nonaktifkan saat test agar suite cepat.
-Logika backoff sendiri diuji murni via backoff_delay() tanpa tidur.
+All sleeps (retry backoff) are disabled during tests to keep the suite fast.
+Backoff logic itself is tested purely via backoff_delay() without sleeping.
 """
 
 from __future__ import annotations
