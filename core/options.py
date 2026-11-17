@@ -51,6 +51,8 @@ class DownloadChoice:
     embed_subs: bool = False
     embed_metadata: bool = False
     sponsorblock: list[str] | None = None  # e.g. ["sponsor", "intro", "outro"]
+    sponsorblock_chapters: list[str] | None = None  # same, but marked as chapters
+    audio_format: str = "mp3"  # codec for audio extraction
     write_info_json: bool = False
     limit_rate: int | None = None  # bytes per second, None = unlimited
     concurrent_fragments: int = 1

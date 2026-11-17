@@ -505,12 +505,13 @@ def _build_ydl_opts(
         _apply_subs_metadata_opts(opts, postprocessors, choice)
         opts["postprocessors"] = postprocessors
 
-    else:  # audio -> MP3
+    else:  # audio -> encoded with FFmpegExtractAudio
+        codec = getattr(choice, "audio_format", "mp3") or "mp3"
         opts["format"] = "bestaudio/best"
         postprocessors = [
             {
                 "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
+                "preferredcodec": codec,
                 "preferredquality": _audio_quality_to_kbps(choice.quality),
             }
         ]
@@ -534,5 +535,8 @@ def _apply_subs_metadata_opts(opts: dict, postprocessors: list[dict], choice, au
     sponsor_cats = getattr(choice, "sponsorblock", None) or []
     if sponsor_cats:
         opts["sponsorblock_remove"] = list(sponsor_cats)
+    sponsor_chapters = getattr(choice, "sponsorblock_chapters", None) or []
+    if sponsor_chapters:
+        opts["sponsorblock_chapter"] = list(sponsor_chapters)
     if bool(getattr(choice, "write_info_json", False)):
         opts["writeinfojson"] = True

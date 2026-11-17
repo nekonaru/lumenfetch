@@ -108,6 +108,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--concurrent-fragments", dest="concurrent_fragments", type=_fragments_arg, default=None, metavar="N", help="Download HLS fragments in parallel (1-10, default 1)")
     p.add_argument("--no-overwrites", dest="no_overwrites", action="store_true", help="Skip download if the output file already exists")
     p.add_argument("--playlist-items", dest="playlist_items", type=_playlist_items_arg, default=None, metavar="ITEMS", help="Only download these playlist items (e.g. '1-3,7'; playlist URLs)")
+    p.add_argument("--audio-format", dest="audio_format", choices=["mp3", "m4a", "opus", "aac", "flac", "wav"], default=None, help="Audio codec for extraction (default: mp3)")
+    p.add_argument("--sponsorblock-chapters", dest="sponsorblock_chapters", nargs="*", default=None, help="Mark SponsorBlock segments as chapters instead of skipping (e.g. --sponsorblock-chapters sponsor intro outro)")
+    p.add_argument("--dry-run", dest="dry_run", action="store_true", help="Detect and report what would be downloaded without downloading")
     p.add_argument("--no-clipboard", action="store_true")
     p.add_argument("--yes", "-y", action="store_true", help="Skip the filename confirmation")
     p.add_argument("--verbose", "-v", action="store_true", help="Detailed logging to file + console")
@@ -148,6 +151,9 @@ def apply_cli_overrides(choice: DownloadChoice, args: argparse.Namespace) -> Dow
         choice.no_overwrites = True
     if getattr(args, "playlist_items", None):
         choice.playlist_items = args.playlist_items
+    sponsorblock_chapters = getattr(args, "sponsorblock_chapters", None)
+    if sponsorblock_chapters is not None:
+        choice.sponsorblock_chapters = [c.strip().lower() for c in sponsorblock_chapters if c.strip()] or ["sponsor"]
     return choice
 
 
@@ -156,15 +162,20 @@ def build_choice_from_args(content, args: argparse.Namespace) -> DownloadChoice:
     from core.options import DownloadChoice  # noqa: PLC0415 - lazy, avoids rich at startup
 
     kind = args.output_type or ("audio" if content.content_type == "AUDIO" else "video")
+    audio_format = args.audio_format if kind == "audio" else None
     if args.fmt:
         fmt = args.fmt.lower()
+    elif audio_format:
+        fmt = audio_format
     else:
         fmt = AUDIO_FORMAT if kind == "audio" else VIDEO_FORMAT
-    if kind == "audio" and fmt != AUDIO_FORMAT:
+    if kind == "audio" and fmt != AUDIO_FORMAT and not audio_format:
         fmt = AUDIO_FORMAT
     if kind == "video" and fmt != VIDEO_FORMAT:
         fmt = VIDEO_FORMAT
     choice = DownloadChoice(output_kind=kind, quality=args.quality or "Best", fmt=fmt)
+    if audio_format:
+        choice.audio_format = audio_format
     return apply_cli_overrides(choice, args)
 
 

@@ -113,6 +113,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "main.batch_failed_urls": "Failed URLs:",
         "main.batch_empty": "[yellow]Batch file is empty.[/yellow]",
         "main.batch_read_fail": "[red]Failed to read batch file: {e}[/red]",
+        "main.dry_run": "[dim][dry-run] would download: {name}[/dim]",
         "main.warn_single": (
             "[yellow]⚠️  This playlist URL contains {n} videos - "
             "only the first one will be downloaded. (Use --playlist all for all.)[/yellow]"
@@ -287,6 +288,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "main.batch_failed_urls": "URL yang gagal:",
         "main.batch_empty": "[yellow]Batch file kosong.[/yellow]",
         "main.batch_read_fail": "[red]Gagal baca batch file: {e}[/red]",
+        "main.dry_run": "[dim][dry-run] akan mendownload: {name}[/dim]",
         "main.warn_single": (
             "[yellow]⚠️  URL ini playlist berisi {n} video - "
             "cuma video pertama yang didownload. (Gunakan --playlist all untuk semua.)[/yellow]"

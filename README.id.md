@@ -396,6 +396,9 @@ lumenfetch "https://youtube.com/watch?v=..." -t video -f mp4 -q 720p -y
 | `--concurrent-fragments N` | Download fragment HLS secara paralel (1-10, default 1) |
 | `--no-overwrites` | Lewati download kalau file output sudah ada |
 | `--playlist-items` | Download hanya item playlist ini (mis. `1-3,7`, khusus URL playlist) |
+| `--audio-format` | Codec audio untuk ekstraksi (default mp3; `m4a`, `opus`, `aac`, `flac`, `wav`) |
+| `--sponsorblock-chapters` | Tandai segmen SponsorBlock sebagai chapter, bukan dilewati (mis. `--sponsorblock-chapters sponsor intro outro`) |
+| `--dry-run` | Deteksi dan laporkan yang akan didownload tanpa mendownload |
 | `--no-clipboard` | Jangan tawarkan isi clipboard |
 | `--ui-lang {en,id}` | Bahasa tampilan CLI (default `en`, diingat setelah dipilih) |
 | `--doctor` | Diagnosa setup (ffmpeg, dep, cookies, jaringan) lalu keluar |
@@ -418,6 +421,12 @@ lumenfetch "https://youtube.com/watch?v=..." -t video --subs --embed-subs -y
 
 # Batasi 1 MB/s dan lewati file yang sudah ada
 lumenfetch "https://youtube.com/watch?v=..." -t video --limit-rate 1M --no-overwrites -y
+
+# Simpan sebagai opus dengan segmen SponsorBlock ditandai sebagai chapter
+lumenfetch "https://youtube.com/watch?v=..." -t audio --audio-format opus --sponsorblock-chapters -y
+
+# Lihat apa yang akan didownload tanpa mendownload
+lumenfetch "https://youtube.com/watch?v=..." --dry-run
 
 # Batch banyak URL, 2 paralel
 lumenfetch --batch daftar.txt --jobs 2

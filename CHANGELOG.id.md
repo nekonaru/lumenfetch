@@ -1,5 +1,19 @@
 # Changelog
 
+## v2.4.0
+
+Codec audio baru, penandaan chapter SponsorBlock, dan mode dry-run.
+
+### Fitur baru
+
+- **Codec audio.** `--audio-format` memilih codec untuk ekstraksi audio (default `mp3`, plus `m4a`, `opus`, `aac`, `flac`, `wav`).
+- **Chapter SponsorBlock.** `--sponsorblock-chapters` menandai segmen sebagai chapter di file hasil, bukan melewatinya.
+- **Dry run.** `--dry-run` mendeteksi dan melaporkan yang akan didownload (judul, nama file, quality, estimasi ukuran) tanpa mendownload atau membutuhkan ffmpeg.
+
+### Peningkatan
+
+- **Komentar kode dan log sekarang berbahasa Inggris.** Sisa string Indonesia di kode sudah diterjemahkan.
+
 ## v2.3.0
 
 Flag kontrol download baru dan dukungan Python 3.13/3.14.

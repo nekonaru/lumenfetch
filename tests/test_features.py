@@ -820,3 +820,56 @@ def test_limit_rate_alone_forces_non_interactive_mode(monkeypatch):
     choice = captured.get("choice_override")
     assert choice is not None
     assert choice.limit_rate == 1024 * 1024
+
+
+def test_build_choice_audio_format_opus():
+    content = _content(content_type="AUDIO")
+    args = main.parse_args(["https://youtube.com/watch?v=abc", "-t", "audio", "--audio-format", "opus"])
+    choice = main.build_choice_from_args(content, args)
+    assert choice.fmt == "opus"
+    assert choice.audio_format == "opus"
+
+
+def test_apply_cli_overrides_sponsorblock_chapters():
+    choice = DownloadChoice(output_kind="video", quality="Best", fmt="mp4")
+    args = main.parse_args(["https://x", "--sponsorblock-chapters"])
+    main.apply_cli_overrides(choice, args)
+    assert choice.sponsorblock_chapters == ["sponsor"]
+    args2 = main.parse_args(["https://x", "--sponsorblock-chapters", "intro", "outro"])
+    main.apply_cli_overrides(choice, args2)
+    assert choice.sponsorblock_chapters == ["intro", "outro"]
+
+
+def test_dry_run_reports_without_downloading(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(main, "detect", lambda *a, **k: _content(url="https://x", title="Dry Run Title"))
+    monkeypatch.setattr(main.options, "show_content_panel", lambda c: None)
+    monkeypatch.setattr(main.options, "resolve_choice", lambda c, avg_speed_bps=None: DownloadChoice(output_kind="video", quality="Best", fmt="mp4"))
+
+    def _boom(*a, **k):
+        raise AssertionError("download must not run in dry-run mode")
+
+    monkeypatch.setattr(main, "download", _boom)
+    monkeypatch.setattr(main, "_ensure_ffmpeg", _boom)
+
+    ok = main.process_url("https://x", utils.get_default_config(), dry_run=True)
+
+    assert ok is True
+    out = capsys.readouterr().out
+    assert "dry-run" in out.lower()
+
+
+def test_dry_run_forces_non_interactive_mode(monkeypatch):
+    captured = {}
+
+    monkeypatch.setattr(main, "detect", lambda *a, **k: _content(url="https://x", title="T"))
+    monkeypatch.setattr(main, "process_url", lambda url, config, **kwargs: captured.update(kwargs) or True)
+    monkeypatch.setattr(main.utils, "load_config", lambda: utils.get_default_config())
+    monkeypatch.setattr(main.utils, "save_config", lambda config: None)
+    monkeypatch.setattr(main.update_checker, "check_for_update", lambda: (False, "2026.1.1", None))
+    monkeypatch.setattr(main.update_checker, "check_self_update", lambda: (False, "2.4.0", None))
+    monkeypatch.setattr(main.options, "show_header", lambda version: None)
+
+    code = main.main(["https://youtube.com/watch?v=abc", "--dry-run"])
+
+    assert code == 0
+    assert captured.get("dry_run") is True
